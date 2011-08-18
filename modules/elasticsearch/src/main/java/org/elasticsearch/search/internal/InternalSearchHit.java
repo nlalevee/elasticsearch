@@ -19,6 +19,18 @@
 
 package org.elasticsearch.search.internal;
 
+import static org.elasticsearch.common.lucene.Lucene.readExplanation;
+import static org.elasticsearch.common.lucene.Lucene.writeExplanation;
+import static org.elasticsearch.search.SearchShardTarget.readSearchShardTarget;
+import static org.elasticsearch.search.highlight.HighlightField.readHighlightField;
+import static org.elasticsearch.search.highlight.offsets.HighlightOffsets.readHighlightOffsets;
+import static org.elasticsearch.search.internal.InternalSearchHitField.readSearchHitField;
+
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Map.Entry;
+
 import org.apache.lucene.search.Explanation;
 import org.elasticsearch.ElasticSearchParseException;
 import org.elasticsearch.common.Nullable;
@@ -38,15 +50,7 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHitField;
 import org.elasticsearch.search.SearchShardTarget;
 import org.elasticsearch.search.highlight.HighlightField;
-
-import java.io.IOException;
-import java.util.Iterator;
-import java.util.Map;
-
-import static org.elasticsearch.common.lucene.Lucene.*;
-import static org.elasticsearch.search.SearchShardTarget.*;
-import static org.elasticsearch.search.highlight.HighlightField.*;
-import static org.elasticsearch.search.internal.InternalSearchHitField.*;
+import org.elasticsearch.search.highlight.offsets.HighlightOffsets;
 
 /**
  * @author kimchy (shay.banon)
@@ -80,6 +84,8 @@ public class InternalSearchHit implements SearchHit {
     @Nullable private SearchShardTarget shard;
 
     private Map<String, Object> sourceAsMap;
+
+    private Map<String, HighlightOffsets[]> highlightOffsets = ImmutableMap.of();
 
     private InternalSearchHit() {
 
@@ -249,6 +255,18 @@ public class InternalSearchHit implements SearchHit {
         this.highlightFields = highlightFields;
     }
 
+    @Override public Map<String, HighlightOffsets[]> highlightOffsets() {
+        return highlightOffsets;
+    }
+
+    @Override public Map<String, HighlightOffsets[]> getHighlightOffsets() {
+        return highlightOffsets();
+    }
+
+    public void highlightOffsets(Map<String, HighlightOffsets[]> highlightOffsets) {
+        this.highlightOffsets = highlightOffsets;
+    }
+
     public void sortValues(Object[] sortValues) {
         this.sortValues = sortValues;
     }
@@ -305,6 +323,9 @@ public class InternalSearchHit implements SearchHit {
         static final XContentBuilderString _SCORE = new XContentBuilderString("_score");
         static final XContentBuilderString FIELDS = new XContentBuilderString("fields");
         static final XContentBuilderString HIGHLIGHT = new XContentBuilderString("highlight");
+        static final XContentBuilderString HIGHLIGHT_OFFSETS = new XContentBuilderString("highlight_offsets");
+        static final XContentBuilderString HIGHLIGHT_OFFSETS_START = new XContentBuilderString("start");
+        static final XContentBuilderString HIGHLIGHT_OFFSETS_END = new XContentBuilderString("end");
         static final XContentBuilderString SORT = new XContentBuilderString("sort");
         static final XContentBuilderString MATCH_FILTERS = new XContentBuilderString("matched_filters");
         static final XContentBuilderString _EXPLANATION = new XContentBuilderString("_explanation");
@@ -365,6 +386,22 @@ public class InternalSearchHit implements SearchHit {
                     }
                     builder.endArray();
                 }
+            }
+            builder.endObject();
+        }
+        if (highlightOffsets != null && !highlightOffsets.isEmpty()) {
+            builder.startObject(Fields.HIGHLIGHT_OFFSETS);
+            for (Entry<String, HighlightOffsets[]> offsetsEntry : highlightOffsets.entrySet()) {
+                builder.field(offsetsEntry.getKey());
+                HighlightOffsets[] offsets = offsetsEntry.getValue();
+                builder.startArray();
+                for (int i = 0; i < offsets.length; i++) {
+                    builder.startObject();
+                    builder.field(Fields.HIGHLIGHT_OFFSETS_START, offsets[i].getStart());
+                    builder.field(Fields.HIGHLIGHT_OFFSETS_END, offsets[i].getEnd());
+                    builder.endObject();
+                }
+                builder.endArray();
             }
             builder.endObject();
         }
@@ -496,6 +533,47 @@ public class InternalSearchHit implements SearchHit {
         }
 
         size = in.readVInt();
+        if (size == 0) {
+            highlightOffsets = ImmutableMap.of();
+        } else if (size == 1) {
+            String field = in.readUTF();
+            HighlightOffsets[] offsets = readHighlightOffsetsList(in);
+            highlightOffsets = ImmutableMap.of(field, offsets);
+        } else if (size == 2) {
+            String field1 = in.readUTF();
+            HighlightOffsets[] offsets1 = readHighlightOffsetsList(in);
+            String field2 = in.readUTF();
+            HighlightOffsets[] offsets2 = readHighlightOffsetsList(in);
+            highlightOffsets = ImmutableMap.of(field1, offsets1, field2, offsets2);
+        } else if (size == 3) {
+            String field1 = in.readUTF();
+            HighlightOffsets[] offsets1 = readHighlightOffsetsList(in);
+            String field2 = in.readUTF();
+            HighlightOffsets[] offsets2 = readHighlightOffsetsList(in);
+            String field3 = in.readUTF();
+            HighlightOffsets[] offsets3 = readHighlightOffsetsList(in);
+            highlightOffsets = ImmutableMap.of(field1, offsets1, field2, offsets2, field3, offsets3);
+        } else if (size == 4) {
+            String field1 = in.readUTF();
+            HighlightOffsets[] offsets1 = readHighlightOffsetsList(in);
+            String field2 = in.readUTF();
+            HighlightOffsets[] offsets2 = readHighlightOffsetsList(in);
+            String field3 = in.readUTF();
+            HighlightOffsets[] offsets3 = readHighlightOffsetsList(in);
+            String field4 = in.readUTF();
+            HighlightOffsets[] offsets4 = readHighlightOffsetsList(in);
+            highlightOffsets = ImmutableMap.of(field1, offsets1, field2, offsets2, field3, offsets3, field4, offsets4);
+        } else {
+            ImmutableMap.Builder<String, HighlightOffsets[]> builder = ImmutableMap.builder();
+            for (int i = 0; i < size; i++) {
+                String fieldName = in.readUTF();
+                HighlightOffsets[] offsets = readHighlightOffsetsList(in);
+                builder.put(fieldName, offsets);
+            }
+            highlightOffsets = builder.build();
+        }
+        
+        size = in.readVInt();
         if (size > 0) {
             sortValues = new Object[size];
             for (int i = 0; i < sortValues.length; i++) {
@@ -544,6 +622,15 @@ public class InternalSearchHit implements SearchHit {
         }
     }
 
+    private HighlightOffsets[] readHighlightOffsetsList(StreamInput in) throws IOException {
+        int size = in.readVInt();
+        HighlightOffsets[] pos = new HighlightOffsets[size];
+        for (int i = 0; i < size; i++) {
+            pos[i] = readHighlightOffsets(in);
+        }
+        return pos;
+    }
+
     @Override public void writeTo(StreamOutput out) throws IOException {
         writeTo(out, InternalSearchHits.streamContext().streamShardTarget(InternalSearchHits.StreamContext.ShardTargetType.STREAM));
     }
@@ -579,6 +666,19 @@ public class InternalSearchHit implements SearchHit {
             out.writeVInt(highlightFields.size());
             for (HighlightField highlightField : highlightFields.values()) {
                 highlightField.writeTo(out);
+            }
+        }
+        if (highlightOffsets == null) {
+            out.writeVInt(0);
+        } else {
+            out.writeVInt(highlightOffsets.size());
+            for (Entry<String, HighlightOffsets[]> offsetsByField : highlightOffsets.entrySet()) {
+                out.writeUTF(offsetsByField.getKey());
+                HighlightOffsets[] offsets = offsetsByField.getValue();
+                out.writeVInt(offsets.length);
+                for (HighlightOffsets offset : offsets) {
+                    offset.writeTo(out);
+                }
             }
         }
 
@@ -646,4 +746,5 @@ public class InternalSearchHit implements SearchHit {
             }
         }
     }
+
 }

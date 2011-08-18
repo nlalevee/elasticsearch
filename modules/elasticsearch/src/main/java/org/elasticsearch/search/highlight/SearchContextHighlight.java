@@ -30,12 +30,22 @@ public class SearchContextHighlight {
 
     private final List<Field> fields;
 
+    private boolean offsetsOnly = false;
+
     public SearchContextHighlight(List<Field> fields) {
         this.fields = fields;
     }
 
     public List<Field> fields() {
         return fields;
+    }
+
+    public void offsetsOnly(boolean offsetsOnly) {
+        this.offsetsOnly = offsetsOnly;
+    }
+
+    public boolean offsetsOnly() {
+        return offsetsOnly;
     }
 
     public static class Field {

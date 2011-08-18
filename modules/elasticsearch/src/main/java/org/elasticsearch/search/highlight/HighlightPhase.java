@@ -41,6 +41,9 @@ import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.search.SearchParseElement;
 import org.elasticsearch.search.fetch.FetchPhaseExecutionException;
 import org.elasticsearch.search.fetch.FetchSubPhase;
+import org.elasticsearch.search.highlight.offsets.HighlightOffsets;
+import org.elasticsearch.search.highlight.offsets.HighlightOffsetsAggregator;
+import org.elasticsearch.search.highlight.offsets.NopFormatter;
 import org.elasticsearch.search.highlight.vectorhighlight.SourceScoreOrderFragmentsBuilder;
 import org.elasticsearch.search.highlight.vectorhighlight.SourceSimpleFragmentsBuilder;
 import org.elasticsearch.search.internal.InternalSearchHit;
@@ -85,7 +88,15 @@ public class HighlightPhase implements FetchSubPhase {
         try {
             DocumentMapper documentMapper = context.mapperService().documentMapper(hitContext.hit().type());
 
-            Map<String, HighlightField> highlightFields = newHashMap();
+            boolean offsetsOnly = context.highlight().offsetsOnly();
+
+            Map<String, HighlightField> highlightFields = null;
+            Map<String, HighlightOffsets[]> highlightOffsets = null;
+            if (offsetsOnly) {
+                highlightOffsets = newHashMap();
+            } else {
+                highlightFields = newHashMap();
+            }
             for (SearchContextHighlight.Field field : context.highlight().fields()) {
                 Encoder encoder;
                 if (field.encoder().equals("html")) {
@@ -134,10 +145,21 @@ public class HighlightPhase implements FetchSubPhase {
                     if (field.numberOfFragments() == 0) {
                         fragmenter = new NullFragmenter();
                     } else {
-                        fragmenter = new SimpleSpanFragmenter(queryScorer, field.fragmentCharSize());
+                        int fragmentCharSize;
+                        if (offsetsOnly) {
+                            // we don't care about fragment merging
+                            fragmentCharSize = 0;
+                        } else {
+                            fragmentCharSize = field.fragmentCharSize();
+                        }
+                        fragmenter = new SimpleSpanFragmenter(queryScorer, fragmentCharSize);
                     }
-                    Formatter formatter = new SimpleHTMLFormatter(field.preTags()[0], field.postTags()[0]);
-
+                    Formatter formatter;
+                    if (offsetsOnly) {
+                        formatter = NopFormatter.INSTANCE;
+                    } else {
+                        formatter = new SimpleHTMLFormatter(field.preTags()[0], field.postTags()[0]);
+                    }
 
                     Highlighter highlighter = new Highlighter(formatter, encoder, queryScorer);
                     highlighter.setTextFragmenter(fragmenter);
@@ -166,6 +188,7 @@ public class HighlightPhase implements FetchSubPhase {
                     int numberOfFragments = field.numberOfFragments() == 0 ? 1 : field.numberOfFragments();
                     ArrayList<TextFragment> fragsList = new ArrayList<TextFragment>();
                     try {
+                        int globalOffset = 0;
                         for (Object textToHighlight : textsToHighlight) {
                             String text = textToHighlight.toString();
                             Analyzer analyzer = context.mapperService().documentMapper(hitContext.hit().type()).mappers().indexAnalyzer();
@@ -173,9 +196,16 @@ public class HighlightPhase implements FetchSubPhase {
                             TextFragment[] bestTextFragments = highlighter.getBestTextFragments(tokenStream, text, false, numberOfFragments);
                             for (TextFragment bestTextFragment : bestTextFragments) {
                                 if (bestTextFragment != null && bestTextFragment.getScore() > 0) {
+                                    if (offsetsOnly) {
+                                        int start = TextFragmentAccessor.getTextStartPos(bestTextFragment);
+                                        int end = TextFragmentAccessor.getTextStartPos(bestTextFragment);
+                                        TextFragmentAccessor.setTextStartPos(bestTextFragment, start + globalOffset);
+                                        TextFragmentAccessor.setTextEndPos(bestTextFragment, end + globalOffset);
+                                    }
                                     fragsList.add(bestTextFragment);
                                 }
                             }
+                            globalOffset += text.length();
                         }
                     } catch (Exception e) {
                         throw new FetchPhaseExecutionException(context, "Failed to highlight field [" + field.field() + "]", e);
@@ -187,86 +217,154 @@ public class HighlightPhase implements FetchSubPhase {
                             }
                         });
                     }
-                    String[] fragments = null;
-                    // number_of_fragments is set to 0 but we have a multivalued field
-                    if (field.numberOfFragments() == 0 && textsToHighlight.size() > 1 && fragsList.size() > 0) {
-                        fragments = new String[1];
-                        for (int i = 0; i < fragsList.size(); i++) {
-                            fragments[0] = (fragments[0] != null ? (fragments[0] + " ") : "") + fragsList.get(i).toString();
+
+                    if (offsetsOnly) {
+                        if (!fragsList.isEmpty()) {
+                            if (field.scoreOrdered()) {
+                                Collections.sort(fragsList, new Comparator<TextFragment>() {
+                                    public int compare(TextFragment o1, TextFragment o2) {
+                                        return Math.round(o2.getScore() - o1.getScore());
+                                    }
+                                });
+                            }
+
+                            numberOfFragments = fragsList.size() < numberOfFragments ? fragsList.size()
+                                    : numberOfFragments;
+
+                            HighlightOffsets[] offsets = new HighlightOffsets[numberOfFragments];
+                            for (int i = 0; i < offsets.length; i++) {
+                                int start = TextFragmentAccessor.getTextStartPos(fragsList.get(i));
+                                int end = TextFragmentAccessor.getTextEndPos(fragsList.get(i));
+                                offsets[i] = new HighlightOffsets(start, end);
+                            }
+
+                            highlightOffsets.put(field.field(), offsets);
                         }
                     } else {
-                        // refine numberOfFragments if needed
-                        numberOfFragments = fragsList.size() < numberOfFragments ? fragsList.size() : numberOfFragments;
-                        fragments = new String[numberOfFragments];
-                        for (int i = 0; i < fragments.length; i++) {
-                            fragments[i] = fragsList.get(i).toString();
+                        String[] fragments = null;
+                        // number_of_fragments is set to 0 but we have a multivalued field
+                        if (field.numberOfFragments() == 0 && textsToHighlight.size() > 1 && fragsList.size() > 0) {
+                            fragments = new String[1];
+                            for (int i = 0; i < fragsList.size(); i++) {
+                                fragments[0] = (fragments[0] != null ? (fragments[0] + " ") : "")
+                                        + fragsList.get(i).toString();
+                            }
+                        } else {
+                            // refine numberOfFragments if needed
+                            numberOfFragments = fragsList.size() < numberOfFragments ? fragsList.size()
+                                    : numberOfFragments;
+                            fragments = new String[numberOfFragments];
+                            for (int i = 0; i < fragments.length; i++) {
+                                fragments[i] = fragsList.get(i).toString();
+                            }
                         }
-                    }
 
-                    if (fragments != null && fragments.length > 0) {
-                        HighlightField highlightField = new HighlightField(field.field(), fragments);
-                        highlightFields.put(highlightField.name(), highlightField);
+                        if (fragments != null && fragments.length > 0) {
+                            HighlightField highlightField = new HighlightField(field.field(), fragments);
+                            highlightFields.put(highlightField.name(), highlightField);
+                        }
                     }
                 } else {
-                    FragListBuilder fragListBuilder;
-                    FragmentsBuilder fragmentsBuilder;
-                    if (field.numberOfFragments() == 0) {
-                        fragListBuilder = new SingleFragListBuilder();
+                    boolean phraseHighlight = true;
+                    boolean fieldMatch = false;
 
-                        if (mapper.stored()) {
-                            fragmentsBuilder = new SimpleFragmentsBuilder(field.preTags(), field.postTags());
-                        } else {
-                            fragmentsBuilder = new SourceSimpleFragmentsBuilder(mapper, context, field.preTags(), field.postTags());
+                    FragListBuilder fragListBuilder = buildFragListBuilder(field);
+                    BaseFragmentsBuilder fragmentsBuilder = buildFragmentsBuilder(context, mapper, field);
+
+                    FieldQuery fieldQuery = buildFieldQuery(phraseHighlight, fieldMatch, context.parsedQuery().query(),
+                            hitContext.reader(), field);
+
+                    if (offsetsOnly) {
+                        HighlightOffsetsAggregator aggregator = new HighlightOffsetsAggregator();
+                        HighlightOffsets[] offsets;
+                        try {
+                            offsets = aggregator.getBestHighlightOffsets(field, hitContext.reader(),
+                                    hitContext.docId(), field.field(), fieldQuery, fragmentsBuilder, fragListBuilder);
+                        } catch (IOException e) {
+                            throw new FetchPhaseExecutionException(context, "Failed to highlight field ["
+                                    + field.field() + "]", e);
                         }
+                        highlightOffsets.put(field.field(), offsets);
                     } else {
-                        if (field.fragmentOffset() == -1)
-                            fragListBuilder = new SimpleFragListBuilder();
-                        else
-                            fragListBuilder = new MarginFragListBuilder(field.fragmentOffset());
-
-                        if (field.scoreOrdered()) {
-                            if (mapper.stored()) {
-                                fragmentsBuilder = new ScoreOrderFragmentsBuilder(field.preTags(), field.postTags());
-                            } else {
-                                fragmentsBuilder = new SourceScoreOrderFragmentsBuilder(mapper, context, field.preTags(), field.postTags());
-                            }
-                        } else {
-                            if (mapper.stored()) {
-                                fragmentsBuilder = new SimpleFragmentsBuilder(field.preTags(), field.postTags());
-                            } else {
-                                fragmentsBuilder = new SourceSimpleFragmentsBuilder(mapper, context, field.preTags(), field.postTags());
-                            }
+                        FastVectorHighlighter highlighter = new FastVectorHighlighter(phraseHighlight, fieldMatch,
+                                fragListBuilder, fragmentsBuilder);
+                        String[] fragments;
+                        try {
+                            // a HACK to make highlighter do highlighting, even though its using the single frag list
+                            // builder
+                            int numberOfFragments = field.numberOfFragments() == 0 ? 1 : field.numberOfFragments();
+                            fragments = highlighter.getBestFragments(fieldQuery, hitContext.reader(),
+                                    hitContext.docId(), mapper.names().indexName(), field.fragmentCharSize(),
+                                    numberOfFragments,
+                                    fragListBuilder, fragmentsBuilder, field.preTags(), field.postTags(), encoder);
+                        } catch (IOException e) {
+                            throw new FetchPhaseExecutionException(context, "Failed to highlight field ["
+                                    + field.field() + "]", e);
                         }
-                    }
-                    FastVectorHighlighter highlighter = new FastVectorHighlighter(true, false, fragListBuilder, fragmentsBuilder);
-                    FieldQuery fieldQuery = buildFieldQuery(highlighter, context.parsedQuery().query(), hitContext.reader(), field);
-
-                    String[] fragments;
-                    try {
-                        // a HACK to make highlighter do highlighting, even though its using the single frag list builder
-                        int numberOfFragments = field.numberOfFragments() == 0 ? 1 : field.numberOfFragments();
-                        fragments = highlighter.getBestFragments(fieldQuery, hitContext.reader(), hitContext.docId(), mapper.names().indexName(), field.fragmentCharSize(), numberOfFragments,
-                                fragListBuilder, fragmentsBuilder, field.preTags(), field.postTags(), encoder);
-                    } catch (IOException e) {
-                        throw new FetchPhaseExecutionException(context, "Failed to highlight field [" + field.field() + "]", e);
-                    }
-                    if (fragments != null && fragments.length > 0) {
-                        HighlightField highlightField = new HighlightField(field.field(), fragments);
-                        highlightFields.put(highlightField.name(), highlightField);
+                        if (fragments != null && fragments.length > 0) {
+                            HighlightField highlightField = new HighlightField(field.field(), fragments);
+                            highlightFields.put(highlightField.name(), highlightField);
+                        }
                     }
                 }
             }
 
             hitContext.hit().highlightFields(highlightFields);
+            hitContext.hit().highlightOffsets(highlightOffsets);
         } finally {
             CustomFieldQuery.reader.remove();
             CustomFieldQuery.highlightFilters.remove();
         }
     }
 
-    private FieldQuery buildFieldQuery(FastVectorHighlighter highlighter, Query query, IndexReader indexReader, SearchContextHighlight.Field field) {
+    private FieldQuery buildFieldQuery(boolean phraseHighlight, boolean fieldMatch, Query query,
+            IndexReader indexReader, SearchContextHighlight.Field field) {
         CustomFieldQuery.reader.set(indexReader);
         CustomFieldQuery.highlightFilters.set(field.highlightFilter());
-        return new CustomFieldQuery(query, highlighter);
+        return new CustomFieldQuery(query, phraseHighlight, phraseHighlight);
+    }
+
+    private FragListBuilder buildFragListBuilder(SearchContextHighlight.Field field) {
+        FragListBuilder fragListBuilder;
+        if (field.numberOfFragments() == 0) {
+            fragListBuilder = new SingleFragListBuilder();
+        } else if (field.fragmentOffset() == -1) {
+            fragListBuilder = new SimpleFragListBuilder();
+        } else {
+            fragListBuilder = new MarginFragListBuilder(field.fragmentOffset());
+        }
+
+        return fragListBuilder;
+    }
+
+    private BaseFragmentsBuilder buildFragmentsBuilder(SearchContext searchContext, FieldMapper fieldMapper,
+            SearchContextHighlight.Field field) {
+        BaseFragmentsBuilder fragmentsBuilder;
+        if (field.numberOfFragments() == 0) {
+            if (fieldMapper.stored()) {
+                fragmentsBuilder = new SimpleFragmentsBuilder(field.preTags(), field.postTags());
+            } else {
+                fragmentsBuilder = new SourceSimpleFragmentsBuilder(fieldMapper, searchContext, field.preTags(),
+                        field.postTags());
+            }
+        } else {
+            if (field.scoreOrdered()) {
+                if (fieldMapper.stored()) {
+                    fragmentsBuilder = new ScoreOrderFragmentsBuilder(field.preTags(), field.postTags());
+                } else {
+                    fragmentsBuilder = new SourceScoreOrderFragmentsBuilder(fieldMapper, searchContext,
+                            field.preTags(), field.postTags());
+                }
+            } else {
+                if (fieldMapper.stored()) {
+                    fragmentsBuilder = new SimpleFragmentsBuilder(field.preTags(), field.postTags());
+                } else {
+                    fragmentsBuilder = new SourceSimpleFragmentsBuilder(fieldMapper, searchContext, field.preTags(),
+                            field.postTags());
+                }
+            }
+        }
+
+        return fragmentsBuilder;
     }
 }

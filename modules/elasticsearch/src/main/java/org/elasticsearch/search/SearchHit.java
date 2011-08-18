@@ -19,13 +19,14 @@
 
 package org.elasticsearch.search;
 
+import java.util.Map;
+
 import org.apache.lucene.search.Explanation;
 import org.elasticsearch.ElasticSearchParseException;
 import org.elasticsearch.common.io.stream.Streamable;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.search.highlight.HighlightField;
-
-import java.util.Map;
+import org.elasticsearch.search.highlight.offsets.HighlightOffsets;
 
 /**
  * A single search hit.
@@ -146,6 +147,16 @@ public interface SearchHit extends Streamable, ToXContent, Iterable<SearchHitFie
      * A map of highlighted fields.
      */
     Map<String, HighlightField> getHighlightFields();
+
+    /**
+     * A map of highlight offsets.
+     */
+    Map<String, HighlightOffsets[]> highlightOffsets();
+
+    /**
+     * A map of highlight offsets.
+     */
+    Map<String, HighlightOffsets[]> getHighlightOffsets();
 
     /**
      * An array of the sort values used.

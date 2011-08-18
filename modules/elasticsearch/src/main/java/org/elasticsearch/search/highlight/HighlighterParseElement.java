@@ -37,6 +37,7 @@ import static org.elasticsearch.common.collect.Lists.*;
  *  post_tags : ["tag1", "tag2"],
  *  order : "score",
  *  highlight_filter : true,
+ *  offsets_only : true,
  *  fields : {
  *      field1 : {  },
  *      field2 : { fragment_size : 100, number_of_fragments : 2 },
@@ -73,6 +74,7 @@ public class HighlighterParseElement implements SearchParseElement {
         int globalFragmentSize = 100;
         int globalNumOfFragments = 5;
         String globalEncoder = "default";
+        boolean offsetsOnly = false;
 
         while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
             if (token == XContentParser.Token.FIELD_NAME) {
@@ -102,6 +104,8 @@ public class HighlighterParseElement implements SearchParseElement {
                     }
                 } else if ("highlight_filter".equals(topLevelFieldName) || "highlightFilter".equals(topLevelFieldName)) {
                     globalHighlightFilter = parser.booleanValue();
+                } else if ("offsets_only".equals(topLevelFieldName) || "offsetsOnly".equals(topLevelFieldName)) {
+                    offsetsOnly = parser.booleanValue();
                 } else if ("fragment_size".equals(topLevelFieldName) || "fragmentSize".equals(topLevelFieldName)) {
                     globalFragmentSize = parser.intValue();
                 } else if ("number_of_fragments".equals(topLevelFieldName) || "numberOfFragments".equals(topLevelFieldName)) {
@@ -185,6 +189,8 @@ public class HighlighterParseElement implements SearchParseElement {
 
         }
 
-        context.highlight(new SearchContextHighlight(fields));
+        SearchContextHighlight contextHighlight = new SearchContextHighlight(fields);
+        contextHighlight.offsetsOnly(offsetsOnly);
+        context.highlight(contextHighlight);
     }
 }
