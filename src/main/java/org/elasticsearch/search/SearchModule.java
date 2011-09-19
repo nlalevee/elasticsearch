@@ -24,6 +24,7 @@ import org.elasticsearch.common.inject.AbstractModule;
 import org.elasticsearch.common.inject.Module;
 import org.elasticsearch.common.inject.SpawnModules;
 import org.elasticsearch.search.action.SearchServiceTransportAction;
+import org.elasticsearch.search.children.ChildrenPhase;
 import org.elasticsearch.search.controller.SearchPhaseController;
 import org.elasticsearch.search.dfs.DfsPhase;
 import org.elasticsearch.search.facet.FacetModule;
@@ -60,6 +61,7 @@ public class SearchModule extends AbstractModule implements SpawnModules {
         bind(VersionFetchSubPhase.class).asEagerSingleton();
         bind(MatchedFiltersFetchSubPhase.class).asEagerSingleton();
         bind(HighlightPhase.class).asEagerSingleton();
+        bind(ChildrenPhase.class).asEagerSingleton();
 
         bind(SearchServiceTransportAction.class).asEagerSingleton();
     }

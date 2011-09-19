@@ -24,6 +24,7 @@ import org.elasticsearch.ElasticSearchParseException;
 import org.elasticsearch.common.BytesHolder;
 import org.elasticsearch.common.io.stream.Streamable;
 import org.elasticsearch.common.xcontent.ToXContent;
+import org.elasticsearch.search.children.ChildrenResult;
 import org.elasticsearch.search.highlight.HighlightField;
 
 import java.util.Map;
@@ -182,4 +183,8 @@ public interface SearchHit extends Streamable, ToXContent, Iterable<SearchHitFie
      * The shard of the search hit.
      */
     SearchShardTarget getShard();
+
+    ChildrenResult[] childrenResults();
+
+    ChildrenResult[] getChildrenResults();
 }

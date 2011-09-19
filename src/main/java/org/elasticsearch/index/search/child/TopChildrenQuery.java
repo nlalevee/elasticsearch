@@ -74,6 +74,8 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
 
     private int numHits = 0;
 
+    private Map<Integer, List<Integer>> childrendDocsByParent;
+
     // Note, the query is expected to already be filtered to only child type docs
     public TopChildrenQuery(Query query, String scope, String childType, String parentType, ScoreType scoreType, int factor, int incrementalFactor) {
         this.query = query;
@@ -99,6 +101,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     public void clear() {
         parentDocs = null;
         numHits = 0;
+        childrendDocsByParent = null;
     }
 
     @Override
@@ -119,6 +122,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     @Override
     public void processResults(TopDocs topDocs, SearchContext context) {
         Map<Object, TIntObjectHashMap<ParentDoc>> parentDocsPerReader = new HashMap<Object, TIntObjectHashMap<ParentDoc>>();
+        childrendDocsByParent = new HashMap<Integer, List<Integer>>();
         for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
             int readerIndex = context.searcher().readerIndex(scoreDoc.doc);
             IndexReader subReader = context.searcher().subReaders()[readerIndex];
@@ -130,6 +134,13 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
                 // no parent found
                 continue;
             }
+
+            List<Integer> childrenIds = childrendDocsByParent.get(parentId);
+            if (childrenIds == null) {
+                childrenIds = new ArrayList<Integer>();
+            }
+            childrenIds.add(scoreDoc.doc);
+
             // now go over and find the parent doc Id and reader tuple
             for (IndexReader indexReader : context.searcher().subReaders()) {
                 int parentDocId = context.idCache().reader(indexReader).docById(parentType, parentId);
@@ -168,6 +179,10 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
             Arrays.sort(values, PARENT_DOC_COMP);
             parentDocs.put(entry.getKey(), values);
         }
+    }
+
+    public Map<Integer, List<Integer>> getChildrendDocsByParent() {
+        return childrendDocsByParent;
     }
 
     private static final ParentDocComparator PARENT_DOC_COMP = new ParentDocComparator();
