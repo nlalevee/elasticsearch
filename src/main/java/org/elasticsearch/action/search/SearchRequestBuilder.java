@@ -30,6 +30,7 @@ import org.elasticsearch.index.query.FilterBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.search.Scroll;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.children.ChildrenBuilder;
 import org.elasticsearch.search.facet.AbstractFacetBuilder;
 import org.elasticsearch.search.highlight.HighlightBuilder;
 import org.elasticsearch.search.sort.SortBuilder;
@@ -618,6 +619,107 @@ public class SearchRequestBuilder extends BaseRequestBuilder<SearchRequest, Sear
         return this;
     }
 
+    public SearchRequestBuilder setChildrenSize(int size) {
+        childrenBuilder().size(size);
+        return this;
+    }
+
+    /**
+     * Adds a field to be highlighted with default fragment size of 100 characters, and
+     * default number of fragments of 5.
+     *
+     * @param name The field to highlight
+     */
+    public SearchRequestBuilder addChildrenHighlightedField(String name) {
+        childrenBuilder().highlightBuilder().field(name);
+        return this;
+    }
+
+
+    /**
+     * Adds a field to be highlighted with a provided fragment size (in characters), and
+     * default number of fragments of 5.
+     *
+     * @param name         The field to highlight
+     * @param fragmentSize The size of a fragment in characters
+     */
+    public SearchRequestBuilder addChildrenHighlightedField(String name, int fragmentSize) {
+        childrenBuilder().highlightBuilder().field(name, fragmentSize);
+        return this;
+    }
+
+    /**
+     * Adds a field to be highlighted with a provided fragment size (in characters), and
+     * a provided (maximum) number of fragments.
+     *
+     * @param name              The field to highlight
+     * @param fragmentSize      The size of a fragment in characters
+     * @param numberOfFragments The (maximum) number of fragments
+     */
+    public SearchRequestBuilder addChildrenHighlightedField(String name, int fragmentSize, int numberOfFragments) {
+        childrenBuilder().highlightBuilder().field(name, fragmentSize, numberOfFragments);
+        return this;
+    }
+
+    /**
+     * Adds a field to be highlighted with a provided fragment size (in characters),
+     * a provided (maximum) number of fragments and an offset for the highlight.
+     *
+     * @param name              The field to highlight
+     * @param fragmentSize      The size of a fragment in characters
+     * @param numberOfFragments The (maximum) number of fragments
+     */
+    public SearchRequestBuilder addChildrenHighlightedField(String name, int fragmentSize, int numberOfFragments,
+                                                    int fragmentOffset) {
+        childrenBuilder().highlightBuilder().field(name, fragmentSize, numberOfFragments, fragmentOffset);
+        return this;
+    }
+
+    /**
+     * Set a tag scheme that encapsulates a built in pre and post tags. The allows schemes
+     * are <tt>styled</tt> and <tt>default</tt>.
+     *
+     * @param schemaName The tag scheme name
+     */
+    public SearchRequestBuilder setChildrenHighlighterTagsSchema(String schemaName) {
+        childrenBuilder().highlightBuilder().tagsSchema(schemaName);
+        return this;
+    }
+
+    /**
+     * Explicitly set the pre tags that will be used for highlighting.
+     */
+    public SearchRequestBuilder setChildrenHighlighterPreTags(String... preTags) {
+        childrenBuilder().highlightBuilder().preTags(preTags);
+        return this;
+    }
+
+    /**
+     * Explicitly set the post tags that will be used for highlighting.
+     */
+    public SearchRequestBuilder setChildrenHighlighterPostTags(String... postTags) {
+        childrenBuilder().highlightBuilder().postTags(postTags);
+        return this;
+    }
+
+    /**
+     * The order of fragments per field. By default, ordered by the order in the
+     * highlighted text. Can be <tt>score</tt>, which then it will be ordered
+     * by score of the fragments.
+     */
+    public SearchRequestBuilder setChildrenHighlighterOrder(String order) {
+        childrenBuilder().highlightBuilder().order(order);
+        return this;
+    }
+
+    /**
+     * The encoder to set for highlighting
+     */
+    public SearchRequestBuilder setChildrenHighlighterEncoder(String encoder) {
+        childrenBuilder().highlightBuilder().encoder(encoder);
+        return this;
+    }
+
     /**
      * Sets the source of the request as a json string. Note, settings anything other
      * than the search type will cause this source to be overridden, consider using
@@ -752,5 +854,9 @@ public class SearchRequestBuilder extends BaseRequestBuilder<SearchRequest, Sear
 
     private HighlightBuilder highlightBuilder() {
         return sourceBuilder().highlighter();
+    }
+
+    private ChildrenBuilder childrenBuilder() {
+        return sourceBuilder().children();
     }
 }

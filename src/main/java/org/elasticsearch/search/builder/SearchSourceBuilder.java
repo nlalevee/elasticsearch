@@ -35,6 +35,7 @@ import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.FilterBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.search.children.ChildrenBuilder;
 import org.elasticsearch.search.facet.AbstractFacetBuilder;
 import org.elasticsearch.search.highlight.HighlightBuilder;
 import org.elasticsearch.search.sort.SortBuilder;
@@ -107,6 +108,8 @@ public class SearchSourceBuilder implements ToXContent {
     private int facetBinaryLength;
 
     private HighlightBuilder highlightBuilder;
+
+    private ChildrenBuilder childrenBuilder;
 
     private TObjectFloatHashMap<String> indexBoost = null;
 
@@ -398,6 +401,21 @@ public class SearchSourceBuilder implements ToXContent {
      */
     public SearchSourceBuilder highlight(HighlightBuilder highlightBuilder) {
         this.highlightBuilder = highlightBuilder;
+        return this;
+    }
+
+    public ChildrenBuilder children() {
+        if (childrenBuilder == null) {
+            childrenBuilder = new ChildrenBuilder();
+        }
+        return childrenBuilder;
+    }
+
+    /**
+     * Adds children fetch to perform as part of the search.
+     */
+    public SearchSourceBuilder children(ChildrenBuilder childrenBuilder) {
+        this.childrenBuilder = childrenBuilder;
         return this;
     }
 
@@ -718,6 +736,10 @@ public class SearchSourceBuilder implements ToXContent {
 
         if (highlightBuilder != null) {
             highlightBuilder.toXContent(builder, params);
+        }
+
+        if (childrenBuilder != null) {
+            childrenBuilder.toXContent(builder, params);
         }
 
         if (stats != null) {
