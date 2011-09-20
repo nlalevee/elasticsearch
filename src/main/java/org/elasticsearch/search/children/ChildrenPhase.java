@@ -118,12 +118,12 @@ public class ChildrenPhase implements FetchSubPhase {
         } else if (query instanceof TopChildrenQuery) {
             List<Integer> ids = ((TopChildrenQuery) query).getChildrendDocsByParent().get(parentId);
             if (ids != null) {
-                childrenIds.addAll(childrenIds);
+                childrenIds.addAll(ids);
             }
         } else if (query instanceof BlockJoinQuery) {
             List<Integer> ids = ((BlockJoinQuery) query).getChildrendDocsByParent().get(parentId);
             if (ids != null) {
-                childrenIds.addAll(childrenIds);
+                childrenIds.addAll(ids);
             }
         }
     }

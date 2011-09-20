@@ -25,6 +25,8 @@ public class ChildrenResult implements Streamable {
     }
 
     public ChildrenResult(String type, String id, Map<String, HighlightField> highlightFields) {
+        this.type = type;
+        this.id = id;
         this.highlightFields = highlightFields;
     }
 

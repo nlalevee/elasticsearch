@@ -135,17 +135,18 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
                 continue;
             }
 
-            List<Integer> childrenIds = childrendDocsByParent.get(parentId);
-            if (childrenIds == null) {
-                childrenIds = new ArrayList<Integer>();
-            }
-            childrenIds.add(scoreDoc.doc);
-
             // now go over and find the parent doc Id and reader tuple
             for (IndexReader indexReader : context.searcher().subReaders()) {
                 int parentDocId = context.idCache().reader(indexReader).docById(parentType, parentId);
                 if (parentDocId != -1 && !indexReader.isDeleted(parentDocId)) {
                     // we found a match, add it and break
+
+                    List<Integer> childrenIds = childrendDocsByParent.get(parentDocId);
+                    if (childrenIds == null) {
+                        childrenIds = new ArrayList<Integer>();
+                        childrendDocsByParent.put(parentDocId, childrenIds);
+                    }
+                    childrenIds.add(scoreDoc.doc);
 
                     TIntObjectHashMap<ParentDoc> readerParentDocs = parentDocsPerReader.get(indexReader.getCoreCacheKey());
                     if (readerParentDocs == null) {
