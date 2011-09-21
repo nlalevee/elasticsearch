@@ -2,7 +2,7 @@ package org.elasticsearch.test.integration.search.children;
 
 import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
 import static org.elasticsearch.index.query.QueryBuilders.fieldQuery;
-import static org.elasticsearch.index.query.QueryBuilders.topChildrenQuery;
+import static org.elasticsearch.index.query.QueryBuilders.*;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
@@ -36,7 +36,7 @@ public class ChildrenFetchTests extends AbstractNodesTests {
         return client("server1");
     }
 
-    @Test public void testChildrenIdFetch() throws Exception {
+    @Test public void testTopChildrenIdFetch() throws Exception {
         try {
             client.admin().indices().prepareDelete("test").execute().actionGet();
         } catch (Exception e) {
@@ -83,6 +83,46 @@ public class ChildrenFetchTests extends AbstractNodesTests {
         assertThat(search.hits().hits()[0].childrenResults(), notNullValue());
         assertThat(search.hits().hits()[0].childrenResults().length, equalTo(1));
         assertThat(search.hits().hits()[0].childrenResults()[0].id(), equalTo("1"));
+        assertThat(search.hits().hits()[0].childrenResults()[0].type(), equalTo("blog_tag"));
+    }
+
+    @Test public void testNestedChildrenIdFetch() throws Exception {
+        try {
+            client.admin().indices().prepareDelete("test").execute().actionGet();
+        } catch (Exception e) {
+            // ignore
+        }
+
+        client.admin().indices().prepareCreate("test").setSettings(ImmutableSettings.settingsBuilder().put("number_of_shards", 2))
+                .addMapping("blog", jsonBuilder().startObject().startObject("blog").startObject("properties")
+                        .startObject("title").field("type", "string").endObject()
+                        .startObject("blog_tag").field("type", "nested").endObject()
+                        .endObject().endObject().endObject())
+                .execute().actionGet();
+
+        for (int i = 0; i < 5; i++) {
+            client.prepareIndex("test", "blog", Integer.toString(i))
+                    .setSource(XContentFactory.jsonBuilder().startObject()
+                            .field("title", "This is a test on the parent/children fetching")
+                            .field("blog_tag").startArray().startObject().field("tag", "tag" + i).endObject().endArray()
+                            .endObject())
+                    .setRefresh(true).execute().actionGet();
+        }
+
+        SearchResponse search = client.prepareSearch()
+                .setQuery(nestedQuery("blog_tag", fieldQuery("blog_tag.tag", "tag1")))
+                .setChildrenSize(10)
+                .execute().actionGet();
+
+        System.out.println(search);
+
+        assertThat(search.hits().totalHits(), equalTo(1l));
+        assertThat(search.hits().hits().length, equalTo(1));
+        assertThat(search.getFailedShards(), equalTo(0));
+        assertThat(search.hits().hits()[0].childrenResults(), notNullValue());
+        assertThat(search.hits().hits()[0].childrenResults().length, equalTo(1));
+        assertThat(search.hits().hits()[0].childrenResults()[0].id(), equalTo("1"));
+        assertThat(search.hits().hits()[0].childrenResults()[0].type(), equalTo("_nested"));
     }
 
 }

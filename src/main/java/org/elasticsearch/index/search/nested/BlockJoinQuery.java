@@ -317,6 +317,7 @@ public class BlockJoinQuery extends Query {
                 List<Integer> childrenIds = childrendDocsByParent.get(parentDoc);
                 if (childrenIds == null) {
                     childrenIds = new ArrayList<Integer>();
+                    childrendDocsByParent.put(parentDoc, childrenIds);
                 }
                 childrenIds.add(nextChildDoc);
 

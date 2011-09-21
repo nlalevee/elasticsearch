@@ -84,7 +84,13 @@ public class ChildrenPhase implements FetchSubPhase {
             } catch (IOException e) {
                 throw new FetchPhaseExecutionException(context, "Failed to fetch children doc id [" + childId + "]", e);
             }
-            Uid uid = Uid.createUid(doc.get(UidFieldMapper.NAME));
+            String uidField = doc.get(UidFieldMapper.NAME);
+            Uid uid;
+            if (uidField != null) {
+                uid = Uid.createUid(uidField);
+            } else {
+                uid = new Uid("_nested", hitContext.hit().getId());
+            }
             Map<String, HighlightField> highlight = null;
             if (esHighlighter != null) {
                 highlight = esHighlighter.highlight(hitContext, uid.type(), childId);
