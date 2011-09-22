@@ -135,7 +135,7 @@ public class ESHighlighter {
 
                     // QueryScorer uses WeightedSpanTermExtractor to extract terms, but we can't really plug into
                     // it, so, we hack here (and really only support top level queries)
-                    Query query = context.parsedQuery().query();
+                    Query query = getParsedQuery();
                     while (true) {
                         boolean extracted = false;
                         if (query instanceof FunctionScoreQuery) {
@@ -295,13 +295,13 @@ public class ESHighlighter {
                         if (field.requireFieldMatch()) {
                             if (cache.fieldMatchFieldQuery == null) {
                                 // we use top level reader to rewrite the query against all readers, with use caching it across hits (and across readers...)
-                                cache.fieldMatchFieldQuery = new CustomFieldQuery(context.parsedQuery().query(), hitContext.topLevelReader(), true, field.requireFieldMatch());
+                                cache.fieldMatchFieldQuery = new CustomFieldQuery(getParsedQuery(), hitContext.topLevelReader(), true, field.requireFieldMatch());
                             }
                             fieldQuery = cache.fieldMatchFieldQuery;
                         } else {
                             if (cache.noFieldMatchFieldQuery == null) {
                                 // we use top level reader to rewrite the query against all readers, with use caching it across hits (and across readers...)
-                                cache.noFieldMatchFieldQuery = new CustomFieldQuery(context.parsedQuery().query(), hitContext.topLevelReader(), true, field.requireFieldMatch());
+                                cache.noFieldMatchFieldQuery = new CustomFieldQuery(getParsedQuery(), hitContext.topLevelReader(), true, field.requireFieldMatch());
                             }
                             fieldQuery = cache.noFieldMatchFieldQuery;
                         }
@@ -327,6 +327,10 @@ public class ESHighlighter {
         }
 
         return highlightFields;
+    }
+
+    protected Query getParsedQuery() {
+        return context.parsedQuery().query();
     }
 
 

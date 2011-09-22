@@ -186,6 +186,10 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
         return childrendDocsByParent;
     }
 
+    public Query getChildQuery() {
+        return query;
+    }
+
     private static final ParentDocComparator PARENT_DOC_COMP = new ParentDocComparator();
 
     static class ParentDocComparator implements Comparator<ParentDoc> {
@@ -324,4 +328,5 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
             throw new ElasticSearchIllegalStateException("No support for score type [" + scoreType + "]");
         }
     }
+
 }

@@ -71,7 +71,7 @@ public class ChildrenPhase implements FetchSubPhase {
         int n = 0;
         ESHighlighter esHighlighter = null;
         if (context.children().fields() != null) {
-            esHighlighter = new ESHighlighter(context, context.children().fields());
+            esHighlighter = new ChildrenHighlighter(context, context.children().fields());
         }
         ChildrenResult[] childrenResults = new ChildrenResult[Math.min(childIds.size(), context.children().size())];
         for (Integer childId : childIds) {

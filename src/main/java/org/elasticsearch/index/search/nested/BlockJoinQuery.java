@@ -93,6 +93,10 @@ public class BlockJoinQuery extends Query {
         return this;
     }
 
+    public Query getChildQuery() {
+        return childQuery;
+    }
+
     public Map<Integer, List<Integer>> getChildrendDocsByParent() {
         return childrendDocsByParent;
     }
