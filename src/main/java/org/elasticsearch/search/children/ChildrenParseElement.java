@@ -1,5 +1,5 @@
 /*
- * Licensed to Elastic Search and Shay Banon under one
+ * Licensed to Nicolas Lalevee under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership. Elastic Search licenses this

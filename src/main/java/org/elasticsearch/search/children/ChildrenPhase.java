@@ -1,5 +1,5 @@
 /*
- * Licensed to Elastic Search and Shay Banon under one
+ * Licensed to Nicolas Lalevee under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
  * regarding copyright ownership. Elastic Search licenses this
@@ -32,7 +32,6 @@ import org.elasticsearch.index.mapper.Uid;
 import org.elasticsearch.index.mapper.internal.UidFieldMapper;
 import org.elasticsearch.index.mapper.selector.UidFieldSelector;
 import org.elasticsearch.index.search.child.TopChildrenQuery;
-import org.elasticsearch.index.search.nested.BlockJoinQuery;
 import org.elasticsearch.search.SearchParseElement;
 import org.elasticsearch.search.fetch.FetchPhaseExecutionException;
 import org.elasticsearch.search.fetch.FetchSubPhase;
@@ -85,12 +84,7 @@ public class ChildrenPhase implements FetchSubPhase {
                 throw new FetchPhaseExecutionException(context, "Failed to fetch children doc id [" + childId + "]", e);
             }
             String uidField = doc.get(UidFieldMapper.NAME);
-            Uid uid;
-            if (uidField != null) {
-                uid = Uid.createUid(uidField);
-            } else {
-                uid = new Uid("_nested", hitContext.hit().getId());
-            }
+            Uid uid = Uid.createUid(uidField);
             Map<String, HighlightField> highlight = null;
             if (esHighlighter != null) {
                 highlight = esHighlighter.highlight(hitContext, uid.type(), childId);
@@ -126,11 +120,12 @@ public class ChildrenPhase implements FetchSubPhase {
             if (ids != null) {
                 childrenIds.addAll(ids);
             }
-        } else if (query instanceof BlockJoinQuery) {
-            List<Integer> ids = ((BlockJoinQuery) query).getChildrendDocsByParent().get(parentId);
-            if (ids != null) {
-                childrenIds.addAll(ids);
-            }
+            // BlockJoinQuery not supported for now
+            // } else if (query instanceof BlockJoinQuery) {
+            // List<Integer> ids = ((BlockJoinQuery) query).getChildrendDocsByParent().get(parentId);
+            // if (ids != null) {
+            // childrenIds.addAll(ids);
+            // }
         }
     }
 }
