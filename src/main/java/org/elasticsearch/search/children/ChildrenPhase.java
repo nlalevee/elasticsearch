@@ -65,6 +65,27 @@ public class ChildrenPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        enableChildrenDocGathering(context.query());
+    }
+
+    private void enableChildrenDocGathering(Query query) {
+        if (query instanceof BooleanQuery) {
+            for (BooleanClause clause : ((BooleanQuery) query).getClauses()) {
+                if (!clause.isProhibited()) {
+                    enableChildrenDocGathering(clause.getQuery());
+                }
+            }
+        } else if (query instanceof TopChildrenQuery) {
+            ((TopChildrenQuery) query).setGatherChildrenDocs(true);
+            // BlockJoinQuery not supported for now
+            // } else if (query instanceof BlockJoinQuery) {
+            // ((BlockJoinQuery) query).setGatherChildrenDocs(true);
+            // }
+        }
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         List<Integer> childIds = gatherChildIds(context, hitContext);
         int n = 0;

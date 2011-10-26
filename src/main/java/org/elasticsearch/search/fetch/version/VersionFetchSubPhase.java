@@ -55,6 +55,11 @@ public class VersionFetchSubPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        // nothing to do
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         // it might make sense to cache the TermDocs on a shared fetch context and just skip here)
         // it is going to mean we work on the high level multi reader and not the lower level reader as is

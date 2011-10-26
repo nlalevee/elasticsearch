@@ -74,6 +74,8 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
 
     private int numHits = 0;
 
+    private boolean gatherChildrenDocs = false;
+
     private Map<Integer, List<Integer>> childrendDocsByParent;
 
     // Note, the query is expected to already be filtered to only child type docs
@@ -122,7 +124,9 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     @Override
     public void processResults(TopDocs topDocs, SearchContext context) {
         Map<Object, TIntObjectHashMap<ParentDoc>> parentDocsPerReader = new HashMap<Object, TIntObjectHashMap<ParentDoc>>();
-        childrendDocsByParent = new HashMap<Integer, List<Integer>>();
+        if (gatherChildrenDocs) {
+            childrendDocsByParent = new HashMap<Integer, List<Integer>>();
+        }
         for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
             int readerIndex = context.searcher().readerIndex(scoreDoc.doc);
             IndexReader subReader = context.searcher().subReaders()[readerIndex];
@@ -141,12 +145,14 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
                 if (parentDocId != -1 && !indexReader.isDeleted(parentDocId)) {
                     // we found a match, add it and break
 
-                    List<Integer> childrenIds = childrendDocsByParent.get(parentDocId);
-                    if (childrenIds == null) {
-                        childrenIds = new ArrayList<Integer>();
-                        childrendDocsByParent.put(parentDocId, childrenIds);
+                    if (gatherChildrenDocs) {
+                        List<Integer> childrenIds = childrendDocsByParent.get(parentDocId);
+                        if (childrenIds == null) {
+                            childrenIds = new ArrayList<Integer>();
+                            childrendDocsByParent.put(parentDocId, childrenIds);
+                        }
+                        childrenIds.add(scoreDoc.doc);
                     }
-                    childrenIds.add(scoreDoc.doc);
 
                     TIntObjectHashMap<ParentDoc> readerParentDocs = parentDocsPerReader.get(indexReader.getCoreCacheKey());
                     if (readerParentDocs == null) {
@@ -180,6 +186,10 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
             Arrays.sort(values, PARENT_DOC_COMP);
             parentDocs.put(entry.getKey(), values);
         }
+    }
+
+    public void setGatherChildrenDocs(boolean gatherChildrenDocs) {
+        this.gatherChildrenDocs = gatherChildrenDocs;
     }
 
     public Map<Integer, List<Integer>> getChildrendDocsByParent() {

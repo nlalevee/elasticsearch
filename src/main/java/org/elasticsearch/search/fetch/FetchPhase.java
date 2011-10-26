@@ -85,6 +85,11 @@ public class FetchPhase implements SearchPhase {
 
     @Override
     public void preProcess(SearchContext context) {
+        for (FetchSubPhase fetchSubPhase : fetchSubPhases) {
+            if (fetchSubPhase.hitExecutionNeeded(context)) {
+                fetchSubPhase.preProcess(context);
+            }
+        }
     }
 
     public void execute(SearchContext context) {

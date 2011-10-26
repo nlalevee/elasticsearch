@@ -86,7 +86,9 @@ public class BlockJoinQuery extends Query {
 
     private Collector childCollector = NoopCollector.NOOP_COLLECTOR;
 
-    private Map<Integer, List<Integer>> childrendDocsByParent = new HashMap<Integer, List<Integer>>();
+    private boolean gatherChildrenDocs = false;
+
+    private Map<Integer, List<Integer>> childrendDocsByParent;
 
     public BlockJoinQuery setCollector(Collector collector) {
         this.childCollector = collector;
@@ -95,6 +97,10 @@ public class BlockJoinQuery extends Query {
 
     public Query getChildQuery() {
         return childQuery;
+    }
+
+    public void setGatherChildrenDocs(boolean gatherChildrenDocs) {
+        this.gatherChildrenDocs = gatherChildrenDocs;
     }
 
     public Map<Integer, List<Integer>> getChildrendDocsByParent() {
@@ -127,6 +133,9 @@ public class BlockJoinQuery extends Query {
 
     @Override
     public Weight createWeight(Searcher searcher) throws IOException {
+        if (gatherChildrenDocs) {
+            childrendDocsByParent = new HashMap<Integer, List<Integer>>();
+        }
         return new BlockJoinWeight(this, childQuery.createWeight(searcher), parentsFilter, scoreMode, childCollector);
     }
 
@@ -318,12 +327,14 @@ public class BlockJoinQuery extends Query {
 
                 // CHANGE:
                 childCollector.collect(nextChildDoc);
-                List<Integer> childrenIds = childrendDocsByParent.get(parentDoc);
-                if (childrenIds == null) {
-                    childrenIds = new ArrayList<Integer>();
-                    childrendDocsByParent.put(parentDoc, childrenIds);
+                if (gatherChildrenDocs) {
+                    List<Integer> childrenIds = childrendDocsByParent.get(parentDoc);
+                    if (childrenIds == null) {
+                        childrenIds = new ArrayList<Integer>();
+                        childrendDocsByParent.put(parentDoc, childrenIds);
+                    }
+                    childrenIds.add(nextChildDoc);
                 }
-                childrenIds.add(nextChildDoc);
 
                 childDocUpto++;
                 nextChildDoc = childScorer.nextDoc();

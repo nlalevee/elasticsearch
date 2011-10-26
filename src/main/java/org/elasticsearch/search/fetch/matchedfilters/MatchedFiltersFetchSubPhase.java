@@ -60,6 +60,11 @@ public class MatchedFiltersFetchSubPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        // nothing to do
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         List<String> matchedFilters = Lists.newArrayListWithCapacity(2);
         for (Map.Entry<String, Filter> entry : context.parsedQuery().namedFilters().entrySet()) {

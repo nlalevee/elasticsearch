@@ -65,6 +65,11 @@ public class ScriptFieldsFetchSubPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        // nothing to do
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         for (ScriptFieldsContext.ScriptField scriptField : context.scriptFields().fields()) {
             scriptField.script().setNextReader(hitContext.reader());

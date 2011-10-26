@@ -62,6 +62,11 @@ public class HighlightPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        // nothing to do
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         ESHighlighter highlighter = new ESHighlighter(context, context.highlight().fields());
         Map<String, HighlightField> highlightFields = highlighter.highlight(hitContext, hitContext.hit().type(),
