@@ -433,10 +433,10 @@ public class InternalSearchHit implements SearchHit {
             builder.field(Fields._EXPLANATION);
             buildExplanation(builder, explanation());
         }
-        if (childrenResults != null) {
-            builder.startArray(Fields.MATCH_FILTERS);
+        if (childrenResults != null && childrenResults.length > 0) {
+            builder.startArray(Fields.CHILDREN);
             for (ChildrenResult childrenResult : childrenResults) {
-                builder.startObject(Fields.CHILDREN);
+                builder.startObject();
                 builder.field(Fields._INDEX, shard.index());
                 builder.field(Fields._TYPE, childrenResult.type());
                 builder.field(Fields._ID, childrenResult.id());
