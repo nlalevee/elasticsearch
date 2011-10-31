@@ -76,6 +76,10 @@ public class RestNodesInfoAction extends BaseRestHandler {
                         builder.field("name", nodeInfo.node().name(), XContentBuilder.FieldCaseConversion.NONE);
                         builder.field("transport_address", nodeInfo.node().address().toString());
 
+                        if (nodeInfo.hostname() != null) {
+                            builder.field("hostname", nodeInfo.hostname(), XContentBuilder.FieldCaseConversion.NONE);
+                        }
+
                         builder.startObject("attributes");
                         for (Map.Entry<String, String> attr : nodeInfo.node().attributes().entrySet()) {
                             builder.field(attr.getKey(), attr.getValue());

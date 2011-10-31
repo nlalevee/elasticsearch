@@ -44,6 +44,9 @@ import java.util.Map;
  */
 public class NodeInfo extends NodeOperationResponse {
 
+    @Nullable
+    private String hostname;
+
     private ImmutableMap<String, String> attributes;
 
     private Settings settings;
@@ -63,10 +66,11 @@ public class NodeInfo extends NodeOperationResponse {
     NodeInfo() {
     }
 
-    public NodeInfo(DiscoveryNode node, ImmutableMap<String, String> attributes, Settings settings,
+    public NodeInfo(String hostname, DiscoveryNode node, ImmutableMap<String, String> attributes, Settings settings,
                     OsInfo os, ProcessInfo process, JvmInfo jvm, NetworkInfo network,
                     TransportInfo transport, @Nullable HttpInfo http) {
         super(node);
+        this.hostname = hostname;
         this.attributes = attributes;
         this.settings = settings;
         this.os = os;
@@ -74,6 +78,22 @@ public class NodeInfo extends NodeOperationResponse {
         this.jvm = jvm;
         this.network = network;
         this.transport = transport;
+    }
+
+    /**
+     * System's hostname. <code>null</code> in case of UnknownHostException
+     */
+    @Nullable
+    public String hostname() {
+        return this.hostname;
+    }
+
+    /**
+     * System's hostname. <code>null</code> in case of UnknownHostException
+     */
+    @Nullable
+    public String getHostname() {
+        return hostname();
     }
 
     /**
@@ -184,6 +204,9 @@ public class NodeInfo extends NodeOperationResponse {
 
     @Override public void readFrom(StreamInput in) throws IOException {
         super.readFrom(in);
+        if (in.readBoolean()) {
+            hostname = in.readUTF();
+        }
         ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
         int size = in.readVInt();
         for (int i = 0; i < size; i++) {
@@ -213,6 +236,12 @@ public class NodeInfo extends NodeOperationResponse {
 
     @Override public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
+        if (hostname == null) {
+            out.writeBoolean(false);
+        } else {
+            out.writeBoolean(true);
+            out.writeUTF(hostname);
+        }
         out.writeVInt(attributes.size());
         for (Map.Entry<String, String> entry : attributes.entrySet()) {
             out.writeUTF(entry.getKey());

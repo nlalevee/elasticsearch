@@ -19,6 +19,9 @@
 
 package org.elasticsearch.node.service;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
+
 import org.elasticsearch.action.admin.cluster.node.info.NodeInfo;
 import org.elasticsearch.action.admin.cluster.node.stats.NodeStats;
 import org.elasticsearch.cluster.ClusterService;
@@ -49,12 +52,19 @@ public class NodeService extends AbstractComponent {
 
     private volatile ImmutableMap<String, String> nodeAttributes = ImmutableMap.of();
 
+    private String hostname;
+
     @Inject public NodeService(Settings settings, MonitorService monitorService, ClusterService clusterService, TransportService transportService, IndicesService indicesService) {
         super(settings);
         this.monitorService = monitorService;
         this.clusterService = clusterService;
         this.transportService = transportService;
         this.indicesService = indicesService;
+        try {
+            hostname = InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            hostname = null;
+        }
     }
 
     public void setHttpServer(@Nullable HttpServer httpServer) {
@@ -70,7 +80,7 @@ public class NodeService extends AbstractComponent {
     }
 
     public NodeInfo info() {
-        return new NodeInfo(clusterService.state().nodes().localNode(), nodeAttributes, settings,
+        return new NodeInfo(hostname, clusterService.state().nodes().localNode(), nodeAttributes, settings,
                 monitorService.osService().info(), monitorService.processService().info(),
                 monitorService.jvmService().info(), monitorService.networkService().info(),
                 transportService.info(), httpServer == null ? null : httpServer.info());
