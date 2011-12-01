@@ -100,7 +100,7 @@ public class ChildrenPhase implements FetchSubPhase {
             }
             Document doc;
             try {
-                doc = hitContext.reader().document(childId, UidFieldSelector.INSTANCE);
+                doc = context.searcher().doc(childId, UidFieldSelector.INSTANCE);
             } catch (IOException e) {
                 throw new FetchPhaseExecutionException(context, "Failed to fetch children doc id [" + childId + "]", e);
             }
