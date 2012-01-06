@@ -65,6 +65,11 @@ public class PartialFieldsFetchSubPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        // nothing to do
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         for (PartialFieldsContext.PartialField field : context.partialFields().fields()) {
             Object value = context.lookup().source().filter(field.includes(), field.excludes());
