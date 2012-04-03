@@ -79,6 +79,70 @@
             <version>${lucene.version}</version>
             <scope>compile</scope>
         </dependency>
+<!--         <dependency> -->
+<!--             <groupId>org.apache.solr</groupId> -->
+<!--             <artifactId>solr-core</artifactId> -->
+<!--             <version>${lucene.version}</version> -->
+<!--             <scope>compile</scope> -->
+<!--             <exclusions> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>javax.servlet</groupId> -->
+<!--                     <artifactId>servlet-api</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>commons-codec</groupId> -->
+<!--                     <artifactId>commons-codec</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>commons-fileupload</groupId> -->
+<!--                     <artifactId>commons-fileupload</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>commons-httpclient</groupId> -->
+<!--                     <artifactId>commons-httpclient</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>commons-io</groupId> -->
+<!--                     <artifactId>commons-io</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>commons-lang</groupId> -->
+<!--                     <artifactId>commons-lang</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.slf4j</groupId> -->
+<!--                     <artifactId>jcl-over-slf4j</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.lucene</groupId> -->
+<!--                     <artifactId>lucene-grouping</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.lucene</groupId> -->
+<!--                     <artifactId>lucene-misc</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.lucene</groupId> -->
+<!--                     <artifactId>lucene-spatial</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.lucene</groupId> -->
+<!--                     <artifactId>lucene-spellchecker</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.solr</groupId> -->
+<!--                     <artifactId>solr-solrj</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.solr</groupId> -->
+<!--                     <artifactId>solr-noggit</artifactId> -->
+<!--                 </exclusion> -->
+<!--                 <exclusion> -->
+<!--                     <groupId>org.apache.solr</groupId> -->
+<!--                     <artifactId>solr-commons-csv</artifactId> -->
+<!--                 </exclusion> -->
+<!--             </exclusions> -->
+<!--         </dependency> -->
 
         <!-- START: dependencies that are shaded -->
         <dependency>
