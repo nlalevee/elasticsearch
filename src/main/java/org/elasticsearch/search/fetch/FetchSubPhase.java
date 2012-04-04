@@ -89,6 +89,11 @@ public interface FetchSubPhase {
     boolean hitExecutionNeeded(SearchContext context);
 
     /**
+     * Performs pre processing of the search context before the execute.
+     */
+    void preProcess(SearchContext context);
+
+    /**
      * Executes the hit level phase, with a reader and doc id (note, its a low level reader, and the matching doc).
      */
     void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException;

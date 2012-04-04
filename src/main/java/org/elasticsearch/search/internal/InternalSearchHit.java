@@ -36,10 +36,12 @@ import org.elasticsearch.rest.action.support.RestXContentBuilder;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHitField;
 import org.elasticsearch.search.SearchShardTarget;
+import org.elasticsearch.search.children.ChildrenResult;
 import org.elasticsearch.search.highlight.HighlightField;
 import org.elasticsearch.search.lookup.SourceLookup;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -55,6 +57,8 @@ import static org.elasticsearch.search.internal.InternalSearchHitField.readSearc
 public class InternalSearchHit implements SearchHit {
 
     private static final Object[] EMPTY_SORT_VALUES = new Object[0];
+
+    private static final ChildrenResult[] EMPTY_CHILDREN_RESULTS = new ChildrenResult[0];
 
     private transient int docId;
 
@@ -83,6 +87,8 @@ public class InternalSearchHit implements SearchHit {
 
     private Map<String, Object> sourceAsMap;
     private byte[] sourceAsBytes;
+
+    private ChildrenResult[] childrenResults = EMPTY_CHILDREN_RESULTS;
 
     private InternalSearchHit() {
 
@@ -282,6 +288,18 @@ public class InternalSearchHit implements SearchHit {
         this.highlightFields = highlightFields;
     }
 
+    @Override public ChildrenResult[] childrenResults() {
+        return this.childrenResults;
+    }
+
+    @Override public ChildrenResult[] getChildrenResults() {
+        return childrenResults();
+    }
+
+    public void childrenResults(ChildrenResult[] childrenResults) {
+        this.childrenResults = childrenResults;
+    }
+
     public void sortValues(Object[] sortValues) {
         this.sortValues = sortValues;
     }
@@ -351,6 +369,7 @@ public class InternalSearchHit implements SearchHit {
         static final XContentBuilderString VALUE = new XContentBuilderString("value");
         static final XContentBuilderString DESCRIPTION = new XContentBuilderString("description");
         static final XContentBuilderString DETAILS = new XContentBuilderString("details");
+        static final XContentBuilderString CHILDREN = new XContentBuilderString("children");
     }
 
     @Override
@@ -394,20 +413,7 @@ public class InternalSearchHit implements SearchHit {
             builder.endObject();
         }
         if (highlightFields != null && !highlightFields.isEmpty()) {
-            builder.startObject(Fields.HIGHLIGHT);
-            for (HighlightField field : highlightFields.values()) {
-                builder.field(field.name());
-                if (field.fragments() == null) {
-                    builder.nullValue();
-                } else {
-                    builder.startArray();
-                    for (String fragment : field.fragments()) {
-                        builder.value(fragment);
-                    }
-                    builder.endArray();
-                }
-            }
-            builder.endObject();
+            buildHighlight(highlightFields.values(), builder);
         }
         if (sortValues != null && sortValues.length > 0) {
             builder.startArray(Fields.SORT);
@@ -427,8 +433,39 @@ public class InternalSearchHit implements SearchHit {
             builder.field(Fields._EXPLANATION);
             buildExplanation(builder, explanation());
         }
+        if (childrenResults != null && childrenResults.length > 0) {
+            builder.startArray(Fields.CHILDREN);
+            for (ChildrenResult childrenResult : childrenResults) {
+                builder.startObject();
+                builder.field(Fields._INDEX, shard.index());
+                builder.field(Fields._TYPE, childrenResult.type());
+                builder.field(Fields._ID, childrenResult.id());
+                if (childrenResult.highlightFields() != null && !childrenResult.highlightFields().isEmpty()) {
+                    buildHighlight(childrenResult.highlightFields().values(), builder);
+                }
+                builder.endObject();
+            }
+            builder.endArray();
+        }
         builder.endObject();
         return builder;
+    }
+
+    private void buildHighlight(Collection<HighlightField> fields, XContentBuilder builder) throws IOException {
+        builder.startObject(Fields.HIGHLIGHT);
+        for (HighlightField field : fields) {
+            builder.field(field.name());
+            if (field.fragments() == null) {
+                builder.nullValue();
+            } else {
+                builder.startArray();
+                for (String fragment : field.fragments()) {
+                    builder.value(fragment);
+                }
+                builder.endArray();
+            }
+        }
+        builder.endObject();
     }
 
     private void buildExplanation(XContentBuilder builder, Explanation explanation) throws IOException {
@@ -573,6 +610,15 @@ public class InternalSearchHit implements SearchHit {
             }
         }
 
+        size = in.readVInt();
+        if (size > 0) {
+            childrenResults = new ChildrenResult[size];
+            for (int i = 0; i < size; i++) {
+                childrenResults[i] = new ChildrenResult();
+                childrenResults[i].readFrom(in);
+            }
+        }
+
         if (context.streamShardTarget() == InternalSearchHits.StreamContext.ShardTargetType.STREAM) {
             if (in.readBoolean()) {
                 shard = readSearchShardTarget(in);
@@ -665,6 +711,15 @@ public class InternalSearchHit implements SearchHit {
             out.writeVInt(matchedFilters.length);
             for (String matchedFilter : matchedFilters) {
                 out.writeUTF(matchedFilter);
+            }
+        }
+
+        if (childrenResults.length == 0) {
+            out.writeVInt(0);
+        } else {
+            out.writeVInt(childrenResults.length);
+            for (ChildrenResult childrenResult : childrenResults) {
+                childrenResult.writeTo(out);
             }
         }
 

@@ -55,6 +55,11 @@ public class ExplainFetchSubPhase implements FetchSubPhase {
     }
 
     @Override
+    public void preProcess(SearchContext context) {
+        // nothing to do
+    }
+
+    @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         try {
             // we use the top level doc id, since we work with the top level searcher

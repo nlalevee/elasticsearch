@@ -47,6 +47,7 @@ import org.elasticsearch.search.fetch.matchedfilters.MatchedFiltersFetchSubPhase
 import org.elasticsearch.search.fetch.partial.PartialFieldsFetchSubPhase;
 import org.elasticsearch.search.fetch.script.ScriptFieldsFetchSubPhase;
 import org.elasticsearch.search.fetch.version.VersionFetchSubPhase;
+import org.elasticsearch.search.children.ChildrenPhase;
 import org.elasticsearch.search.highlight.HighlightPhase;
 import org.elasticsearch.search.internal.InternalSearchHit;
 import org.elasticsearch.search.internal.InternalSearchHitField;
@@ -68,8 +69,8 @@ public class FetchPhase implements SearchPhase {
 
     @Inject
     public FetchPhase(HighlightPhase highlightPhase, ScriptFieldsFetchSubPhase scriptFieldsPhase, PartialFieldsFetchSubPhase partialFieldsPhase,
-                      MatchedFiltersFetchSubPhase matchFiltersPhase, ExplainFetchSubPhase explainPhase, VersionFetchSubPhase versionPhase) {
-        this.fetchSubPhases = new FetchSubPhase[]{scriptFieldsPhase, partialFieldsPhase, matchFiltersPhase, explainPhase, highlightPhase, versionPhase};
+                      MatchedFiltersFetchSubPhase matchFiltersPhase, ExplainFetchSubPhase explainPhase, VersionFetchSubPhase versionPhase, ChildrenPhase childrenPhase) {
+        this.fetchSubPhases = new FetchSubPhase[]{scriptFieldsPhase, partialFieldsPhase, matchFiltersPhase, explainPhase, highlightPhase, versionPhase, childrenPhase};
     }
 
     @Override
@@ -84,6 +85,11 @@ public class FetchPhase implements SearchPhase {
 
     @Override
     public void preProcess(SearchContext context) {
+        for (FetchSubPhase fetchSubPhase : fetchSubPhases) {
+            if (fetchSubPhase.hitExecutionNeeded(context)) {
+                fetchSubPhase.preProcess(context);
+            }
+        }
     }
 
     public void execute(SearchContext context) {

@@ -46,6 +46,7 @@ import org.elasticsearch.index.similarity.SimilarityService;
 import org.elasticsearch.script.ScriptService;
 import org.elasticsearch.search.Scroll;
 import org.elasticsearch.search.SearchShardTarget;
+import org.elasticsearch.search.children.SearchContextChildren;
 import org.elasticsearch.search.dfs.DfsSearchResult;
 import org.elasticsearch.search.facet.SearchContextFacets;
 import org.elasticsearch.search.fetch.FetchSearchResult;
@@ -167,8 +168,10 @@ public class SearchContext implements Releasable {
 
     private Map<String, BlockJoinQuery> nestedQueries;
 
+    private SearchContextChildren children;
+
     public SearchContext(long id, InternalSearchRequest request, SearchShardTarget shardTarget,
-                         Engine.Searcher engineSearcher, IndexService indexService, IndexShard indexShard, ScriptService scriptService) {
+        Engine.Searcher engineSearcher, IndexService indexService, IndexShard indexShard, ScriptService scriptService) {
         this.id = id;
         this.request = request;
         this.searchType = request.searchType();
@@ -582,4 +585,13 @@ public class SearchContext implements Releasable {
     public MapperService.SmartNameObjectMapper smartNameObjectMapper(String name) {
         return mapperService().smartNameObjectMapper(name, request.types());
     }
+
+    public void children(SearchContextChildren children) {
+        this.children = children;
+    }
+
+    public SearchContextChildren children() {
+        return children;
+    }
+
 }

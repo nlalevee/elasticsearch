@@ -28,6 +28,10 @@ import org.elasticsearch.common.lucene.docset.FixedBitDocSet;
 import org.elasticsearch.common.lucene.search.NoopCollector;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -82,9 +86,25 @@ public class BlockJoinQuery extends Query {
 
     private Collector childCollector = NoopCollector.NOOP_COLLECTOR;
 
+    private boolean gatherChildrenDocs = false;
+
+    private Map<Integer, List<Integer>> childrendDocsByParent;
+
     public BlockJoinQuery setCollector(Collector collector) {
         this.childCollector = collector;
         return this;
+    }
+
+    public Query getChildQuery() {
+        return childQuery;
+    }
+
+    public void setGatherChildrenDocs(boolean gatherChildrenDocs) {
+        this.gatherChildrenDocs = gatherChildrenDocs;
+    }
+
+    public Map<Integer, List<Integer>> getChildrendDocsByParent() {
+        return childrendDocsByParent;
     }
 
     // If we are rewritten, this is the original childQuery we
@@ -113,10 +133,13 @@ public class BlockJoinQuery extends Query {
 
     @Override
     public Weight createWeight(Searcher searcher) throws IOException {
+        if (gatherChildrenDocs) {
+            childrendDocsByParent = new HashMap<Integer, List<Integer>>();
+        }
         return new BlockJoinWeight(this, childQuery.createWeight(searcher), parentsFilter, scoreMode, childCollector);
     }
 
-    private static class BlockJoinWeight extends Weight {
+    class BlockJoinWeight extends Weight {
         private final Query joinQuery;
         private final Weight childWeight;
         private final Filter parentsFilter;
@@ -206,7 +229,7 @@ public class BlockJoinQuery extends Query {
         }
     }
 
-    static class BlockJoinScorer extends Scorer {
+    class BlockJoinScorer extends Scorer {
         private final Scorer childScorer;
         private final FixedBitSet parentBits;
         private final ScoreMode scoreMode;
@@ -304,6 +327,14 @@ public class BlockJoinQuery extends Query {
 
                 // CHANGE:
                 childCollector.collect(nextChildDoc);
+                if (gatherChildrenDocs) {
+                    List<Integer> childrenIds = childrendDocsByParent.get(parentDoc);
+                    if (childrenIds == null) {
+                        childrenIds = new ArrayList<Integer>();
+                        childrendDocsByParent.put(parentDoc, childrenIds);
+                    }
+                    childrenIds.add(nextChildDoc);
+                }
 
                 childDocUpto++;
                 nextChildDoc = childScorer.nextDoc();

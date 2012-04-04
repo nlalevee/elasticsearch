@@ -1,8 +1,8 @@
 /*
- * Licensed to ElasticSearch and Shay Banon under one
+ * Licensed to Nicolas Lalevee under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
- * regarding copyright ownership. ElasticSearch licenses this
+ * regarding copyright ownership. Elastic Search licenses this
  * file to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
@@ -17,23 +17,29 @@
  * under the License.
  */
 
-package org.elasticsearch.search.highlight;
+package org.elasticsearch.search.children;
 
 import java.util.List;
 
-import org.elasticsearch.common.xcontent.XContentParser;
-import org.elasticsearch.search.SearchParseElement;
 import org.elasticsearch.search.highlight.SearchContextHighlight.Field;
-import org.elasticsearch.search.internal.SearchContext;
 
-/**
- * @see HighlighterParseElementBase
- */
-public class HighlighterParseElement extends HighlighterParseElementBase implements SearchParseElement {
+public class SearchContextChildren {
 
-    @Override
-    public void parse(XContentParser parser, SearchContext context) throws Exception {
-        List<Field> fields = doParse(parser, context);
-        context.highlight(new SearchContextHighlight(fields));
+    private final List<Field> fields;
+
+    private final int size;
+
+    public SearchContextChildren(int size, List<Field> fields) {
+        this.size = size;
+        this.fields = fields;
     }
+
+    public List<Field> fields() {
+        return fields;
+    }
+
+    public int size() {
+        return size;
+    }
+
 }

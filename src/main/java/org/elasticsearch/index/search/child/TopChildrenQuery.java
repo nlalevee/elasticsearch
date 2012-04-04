@@ -28,6 +28,7 @@ import org.elasticsearch.ElasticSearchIllegalArgumentException;
 import org.elasticsearch.ElasticSearchIllegalStateException;
 import org.elasticsearch.common.BytesWrap;
 import org.elasticsearch.common.lucene.search.EmptyScorer;
+import org.elasticsearch.index.search.child.TopChildrenQuery.ChildrenHits;
 import org.elasticsearch.search.internal.ScopePhase;
 import org.elasticsearch.search.internal.SearchContext;
 
@@ -74,6 +75,27 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
 
     private int numHits = 0;
 
+    private int maxChildrenSize = -1;
+
+    private Map<Integer, ChildrenHits> childrendHitsByParent;
+
+    public static class ChildrenHit {
+        public int docId;
+        public IndexReader reader;
+    }
+
+    public static class ChildrenHits {
+        private List<ChildrenHit> hits = new ArrayList<ChildrenHit>();
+
+        public void addAll(ChildrenHits other) {
+            hits.addAll(other.hits);
+        }
+
+        public List<ChildrenHit> hits() {
+            return hits;
+        }
+    }
+
     // Note, the query is expected to already be filtered to only child type docs
     public TopChildrenQuery(Query query, String scope, String childType, String parentType, ScoreType scoreType, int factor, int incrementalFactor) {
         this.query = query;
@@ -99,6 +121,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     public void clear() {
         parentDocs = null;
         numHits = 0;
+        childrendHitsByParent = null;
     }
 
     @Override
@@ -119,6 +142,9 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     @Override
     public void processResults(TopDocs topDocs, SearchContext context) {
         Map<Object, TIntObjectHashMap<ParentDoc>> parentDocsPerReader = new HashMap<Object, TIntObjectHashMap<ParentDoc>>();
+        if (maxChildrenSize > 0) {
+            childrendHitsByParent = new HashMap<Integer, ChildrenHits>();
+        }
         for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
             int readerIndex = context.searcher().readerIndex(scoreDoc.doc);
             IndexReader subReader = context.searcher().subReaders()[readerIndex];
@@ -130,34 +156,61 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
                 // no parent found
                 continue;
             }
+
             // now go over and find the parent doc Id and reader tuple
-            for (IndexReader indexReader : context.searcher().subReaders()) {
-                int parentDocId = context.idCache().reader(indexReader).docById(parentType, parentId);
-                if (parentDocId != -1 && !indexReader.isDeleted(parentDocId)) {
-                    // we found a match, add it and break
+            int parentReaderIndex = 0;
+            int parentDocId = -1;
+            IndexReader parentIndexReader = null;
+            while (parentDocId == -1 && parentReaderIndex < context.searcher().subReaders().length) {
+                parentIndexReader = context.searcher().subReaders()[parentReaderIndex++];
+                parentDocId = context.idCache().reader(parentIndexReader).docById(parentType, parentId);
+                if (parentDocId != -1 && parentIndexReader.isDeleted(parentDocId)) {
+                    parentDocId = -1;
+                }
+            }
 
-                    TIntObjectHashMap<ParentDoc> readerParentDocs = parentDocsPerReader.get(indexReader.getCoreCacheKey());
-                    if (readerParentDocs == null) {
-                        readerParentDocs = new TIntObjectHashMap<ParentDoc>();
-                        parentDocsPerReader.put(indexReader.getCoreCacheKey(), readerParentDocs);
-                    }
+            if (parentDocId == -1) {
+                continue;
+            }
 
-                    ParentDoc parentDoc = readerParentDocs.get(parentDocId);
-                    if (parentDoc == null) {
-                        numHits++; // we have a hit on a parent
-                        parentDoc = new ParentDoc();
-                        parentDoc.docId = parentDocId;
-                        parentDoc.count = 1;
-                        parentDoc.maxScore = scoreDoc.score;
-                        parentDoc.sumScores = scoreDoc.score;
-                        readerParentDocs.put(parentDocId, parentDoc);
-                    } else {
-                        parentDoc.count++;
-                        parentDoc.sumScores += scoreDoc.score;
-                        if (scoreDoc.score > parentDoc.maxScore) {
-                            parentDoc.maxScore = scoreDoc.score;
-                        }
-                    }
+            TIntObjectHashMap<ParentDoc> readerParentDocs = parentDocsPerReader
+                    .get(parentIndexReader.getCoreCacheKey());
+            if (readerParentDocs == null) {
+                readerParentDocs = new TIntObjectHashMap<ParentDoc>();
+                parentDocsPerReader.put(parentIndexReader.getCoreCacheKey(), readerParentDocs);
+            }
+
+            ParentDoc parentDoc = readerParentDocs.get(parentDocId);
+            if (parentDoc == null) {
+                numHits++; // we have a hit on a parent
+                parentDoc = new ParentDoc();
+                parentDoc.docId = parentDocId;
+                parentDoc.count = 1;
+                parentDoc.maxScore = scoreDoc.score;
+                parentDoc.sumScores = scoreDoc.score;
+                readerParentDocs.put(parentDocId, parentDoc);
+            } else {
+                parentDoc.count++;
+                parentDoc.sumScores += scoreDoc.score;
+                if (scoreDoc.score > parentDoc.maxScore) {
+                    parentDoc.maxScore = scoreDoc.score;
+                }
+            }
+
+            if (maxChildrenSize > 0) {
+                int mainParentDocId = parentDocId + context.searcher().docStarts()[parentReaderIndex - 1];
+                ChildrenHits childrenHits = childrendHitsByParent.get(mainParentDocId);
+                if (childrenHits == null) {
+                    childrenHits = new ChildrenHits();
+                    childrendHitsByParent.put(mainParentDocId, childrenHits);
+                }
+                if (childrenHits.hits.size() < maxChildrenSize) {
+                    // note : since the children have been already globally ordered, here they'll be ordered locally for
+                    // a parent, no need for a top score collector
+                    ChildrenHit childrenHit = new ChildrenHit();
+                    childrenHit.reader = subReader;
+                    childrenHit.docId = subDoc;
+                    childrenHits.hits.add(childrenHit);
                 }
             }
         }
@@ -168,6 +221,18 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
             Arrays.sort(values, PARENT_DOC_COMP);
             parentDocs.put(entry.getKey(), values);
         }
+    }
+
+    public void gatherChildrenDocs(int maxChildrenSize) {
+        this.maxChildrenSize = maxChildrenSize;
+    }
+
+    public Map<Integer, ChildrenHits> getChildrendHitsByParent() {
+        return childrendHitsByParent;
+    }
+
+    public Query getChildQuery() {
+        return query;
     }
 
     private static final ParentDocComparator PARENT_DOC_COMP = new ParentDocComparator();
@@ -308,4 +373,5 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
             throw new ElasticSearchIllegalStateException("No support for score type [" + scoreType + "]");
         }
     }
+
 }
