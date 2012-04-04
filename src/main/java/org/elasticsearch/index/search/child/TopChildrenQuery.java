@@ -74,7 +74,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
 
     private int numHits = 0;
 
-    private boolean gatherChildrenDocs = false;
+    private int maxChildrenSize = -1;
 
     private Map<Integer, List<Integer>> childrendDocsByParent;
 
@@ -124,7 +124,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     @Override
     public void processResults(TopDocs topDocs, SearchContext context) {
         Map<Object, TIntObjectHashMap<ParentDoc>> parentDocsPerReader = new HashMap<Object, TIntObjectHashMap<ParentDoc>>();
-        if (gatherChildrenDocs) {
+        if (maxChildrenSize > 0) {
             childrendDocsByParent = new HashMap<Integer, List<Integer>>();
         }
         for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
@@ -140,42 +140,56 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
             }
 
             // now go over and find the parent doc Id and reader tuple
-            for (IndexReader indexReader : context.searcher().subReaders()) {
-                int parentDocId = context.idCache().reader(indexReader).docById(parentType, parentId);
-                if (parentDocId != -1 && !indexReader.isDeleted(parentDocId)) {
-                    // we found a match, add it and break
+            int parentReaderIndex = 0;
+            int parentDocId = -1;
+            IndexReader parentIndexReader = null;
+            while (parentDocId == -1 && parentReaderIndex < context.searcher().subReaders().length) {
+                parentIndexReader = context.searcher().subReaders()[parentReaderIndex++];
+                parentDocId = context.idCache().reader(parentIndexReader).docById(parentType, parentId);
+                if (parentDocId != -1 && parentIndexReader.isDeleted(parentDocId)) {
+                    parentDocId = -1;
+                }
+            }
 
-                    if (gatherChildrenDocs) {
-                        List<Integer> childrenIds = childrendDocsByParent.get(parentDocId);
-                        if (childrenIds == null) {
-                            childrenIds = new ArrayList<Integer>();
-                            childrendDocsByParent.put(parentDocId, childrenIds);
-                        }
-                        childrenIds.add(scoreDoc.doc);
-                    }
+            if (parentDocId == -1) {
+                continue;
+            }
 
-                    TIntObjectHashMap<ParentDoc> readerParentDocs = parentDocsPerReader.get(indexReader.getCoreCacheKey());
-                    if (readerParentDocs == null) {
-                        readerParentDocs = new TIntObjectHashMap<ParentDoc>();
-                        parentDocsPerReader.put(indexReader.getCoreCacheKey(), readerParentDocs);
-                    }
+            TIntObjectHashMap<ParentDoc> readerParentDocs = parentDocsPerReader
+                    .get(parentIndexReader.getCoreCacheKey());
+            if (readerParentDocs == null) {
+                readerParentDocs = new TIntObjectHashMap<ParentDoc>();
+                parentDocsPerReader.put(parentIndexReader.getCoreCacheKey(), readerParentDocs);
+            }
 
-                    ParentDoc parentDoc = readerParentDocs.get(parentDocId);
-                    if (parentDoc == null) {
-                        numHits++; // we have a hit on a parent
-                        parentDoc = new ParentDoc();
-                        parentDoc.docId = parentDocId;
-                        parentDoc.count = 1;
-                        parentDoc.maxScore = scoreDoc.score;
-                        parentDoc.sumScores = scoreDoc.score;
-                        readerParentDocs.put(parentDocId, parentDoc);
-                    } else {
-                        parentDoc.count++;
-                        parentDoc.sumScores += scoreDoc.score;
-                        if (scoreDoc.score > parentDoc.maxScore) {
-                            parentDoc.maxScore = scoreDoc.score;
-                        }
-                    }
+            ParentDoc parentDoc = readerParentDocs.get(parentDocId);
+            if (parentDoc == null) {
+                numHits++; // we have a hit on a parent
+                parentDoc = new ParentDoc();
+                parentDoc.docId = parentDocId;
+                parentDoc.count = 1;
+                parentDoc.maxScore = scoreDoc.score;
+                parentDoc.sumScores = scoreDoc.score;
+                readerParentDocs.put(parentDocId, parentDoc);
+            } else {
+                parentDoc.count++;
+                parentDoc.sumScores += scoreDoc.score;
+                if (scoreDoc.score > parentDoc.maxScore) {
+                    parentDoc.maxScore = scoreDoc.score;
+                }
+            }
+
+            if (maxChildrenSize > 0) {
+                int mainParentDocId = parentDocId + context.searcher().docStarts()[parentReaderIndex - 1];
+                List<Integer> childrenIds = childrendDocsByParent.get(mainParentDocId);
+                if (childrenIds == null) {
+                    childrenIds = new ArrayList<Integer>();
+                    childrendDocsByParent.put(mainParentDocId, childrenIds);
+                }
+                if (childrenIds.size() < maxChildrenSize) {
+                    // note : since the children have been already globally ordered, here they'll be ordered locally for
+                    // a parent, no need for a top score collector
+                    childrenIds.add(scoreDoc.doc);
                 }
             }
         }
@@ -188,8 +202,8 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
         }
     }
 
-    public void setGatherChildrenDocs(boolean gatherChildrenDocs) {
-        this.gatherChildrenDocs = gatherChildrenDocs;
+    public void gatherChildrenDocs(int maxChildrenSize) {
+        this.maxChildrenSize = maxChildrenSize;
     }
 
     public Map<Integer, List<Integer>> getChildrendDocsByParent() {

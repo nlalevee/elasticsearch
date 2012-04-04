@@ -24,8 +24,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.ElasticSearchException;
 import org.elasticsearch.index.mapper.Uid;
@@ -47,7 +49,7 @@ public class ChildrenPhase implements FetchSubPhase {
 
     @Override
     public Map<String, ? extends SearchParseElement> parseElements() {
-        return ImmutableMap.of("children", new ChildrenHighlighterParseElement());
+        return ImmutableMap.of("children", new ChildrenParseElement());
     }
 
     @Override
@@ -66,22 +68,24 @@ public class ChildrenPhase implements FetchSubPhase {
 
     @Override
     public void preProcess(SearchContext context) {
-        enableChildrenDocGathering(context.query());
+        enableChildrenDocGathering(context.query(), context.children().size());
     }
 
-    private void enableChildrenDocGathering(Query query) {
+    private void enableChildrenDocGathering(Query query, int maxChildrenSize) {
         if (query instanceof BooleanQuery) {
             for (BooleanClause clause : ((BooleanQuery) query).getClauses()) {
                 if (!clause.isProhibited()) {
-                    enableChildrenDocGathering(clause.getQuery());
+                    enableChildrenDocGathering(clause.getQuery(), maxChildrenSize);
                 }
             }
         } else if (query instanceof TopChildrenQuery) {
-            ((TopChildrenQuery) query).setGatherChildrenDocs(true);
+            ((TopChildrenQuery) query).gatherChildrenDocs(maxChildrenSize);
             // BlockJoinQuery not supported for now
             // } else if (query instanceof BlockJoinQuery) {
             // ((BlockJoinQuery) query).setGatherChildrenDocs(true);
             // }
+        } else if (query instanceof FilteredQuery) {
+            enableChildrenDocGathering(((FilteredQuery) query).getQuery(), maxChildrenSize);
         }
     }
 
@@ -116,28 +120,21 @@ public class ChildrenPhase implements FetchSubPhase {
     }
 
     private List<Integer> gatherChildIds(SearchContext context, HitContext hitContext) {
-        if (!context.queryRewritten()) {
-            try {
-                context.updateRewriteQuery(context.searcher().rewrite(context.query()));
-            } catch (IOException e) {
-                throw new FetchPhaseExecutionException(context, "Failed to fetch children", e);
-            }
-        }
-
         List<Integer> childrenIds = Lists.newArrayList();
-        gatherChildIds(childrenIds, hitContext.hit().docId(), context.query());
+        gatherChildIds(hitContext.reader(), childrenIds, hitContext.hit().docId(), context.query());
         return childrenIds;
     }
 
-    private void gatherChildIds(List<Integer> childrenIds, int parentId, Query query) {
+    private void gatherChildIds(IndexReader indexReader, List<Integer> childrenIds, int parentId, Query query) {
         if (query instanceof BooleanQuery) {
             for (BooleanClause clause : ((BooleanQuery) query).getClauses()) {
                 if (!clause.isProhibited()) {
-                    gatherChildIds(childrenIds, parentId, clause.getQuery());
+                    gatherChildIds(indexReader, childrenIds, parentId, clause.getQuery());
                 }
             }
         } else if (query instanceof TopChildrenQuery) {
-            List<Integer> ids = ((TopChildrenQuery) query).getChildrendDocsByParent().get(parentId);
+            Map<Integer, List<Integer>> childrendDocsByParent = ((TopChildrenQuery) query).getChildrendDocsByParent();
+            List<Integer> ids = childrendDocsByParent.get(parentId);
             if (ids != null) {
                 childrenIds.addAll(ids);
             }
@@ -147,6 +144,8 @@ public class ChildrenPhase implements FetchSubPhase {
             // if (ids != null) {
             // childrenIds.addAll(ids);
             // }
+        } else if (query instanceof FilteredQuery) {
+            gatherChildIds(indexReader, childrenIds, parentId, ((FilteredQuery) query).getQuery());
         }
     }
 }
