@@ -30,6 +30,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.Fieldable;
+import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.highlight.DefaultEncoder;
@@ -90,8 +91,8 @@ public class ESHighlighter {
         this.fields = fields;
     }
 
-    public Map<String, HighlightField> highlight(HitContext hitContext, String type,
-            int docId) throws ElasticSearchException {
+    public Map<String, HighlightField> highlight(HitContext hitContext, String type, IndexReader indexReader,
+            int docId, List<SearchContextHighlight.Field> fields) throws ElasticSearchException {
         // we use a cache to cache heavy things, mainly the rewrite in FieldQuery for FVH
         HighlighterEntry cache = (HighlighterEntry) hitContext.cache().get("highlight");
         if (cache == null) {
@@ -99,10 +100,10 @@ public class ESHighlighter {
             hitContext.cache().put("highlight", cache);
         }
 
-        DocumentMapper documentMapper = context.mapperService().documentMapper(hitContext.hit().type());
+        DocumentMapper documentMapper = context.mapperService().documentMapper(type);
 
         Map<String, HighlightField> highlightFields = Maps.newHashMap();
-        for (SearchContextHighlight.Field field : context.highlight().fields()) {
+        for (SearchContextHighlight.Field field : fields) {
             Encoder encoder;
             if (field.encoder().equals("html")) {
                 encoder = Encoders.HTML;
@@ -116,7 +117,7 @@ public class ESHighlighter {
                     //Save skipping missing fields
                     continue;
                 }
-                if (!fullMapper.docMapper().type().equals(hitContext.hit().type())) {
+                if (!fullMapper.docMapper().type().equals(type)) {
                     continue;
                 }
                 mapper = fullMapper.mapper();
@@ -179,7 +180,7 @@ public class ESHighlighter {
                 List<Object> textsToHighlight;
                 if (mapper.stored()) {
                     try {
-                        Document doc = hitContext.reader().document(hitContext.docId(), new SingleFieldSelector(mapper.names().indexName()));
+                        Document doc = indexReader.document(docId, new SingleFieldSelector(mapper.names().indexName()));
                         textsToHighlight = new ArrayList<Object>(doc.getFields().size());
                         for (Fieldable docField : doc.getFields()) {
                             if (docField.stringValue() != null) {
@@ -191,8 +192,8 @@ public class ESHighlighter {
                     }
                 } else {
                     SearchLookup lookup = context.lookup();
-                    lookup.setNextReader(hitContext.reader());
-                    lookup.setNextDocId(hitContext.docId());
+                    lookup.setNextReader(indexReader);
+                    lookup.setNextDocId(docId);
                     textsToHighlight = lookup.source().extractRawValues(mapper.names().sourcePath());
                 }
 
@@ -202,7 +203,7 @@ public class ESHighlighter {
                 try {
                     for (Object textToHighlight : textsToHighlight) {
                         String text = textToHighlight.toString();
-                        Analyzer analyzer = context.mapperService().documentMapper(hitContext.hit().type()).mappers().indexAnalyzer();
+                        Analyzer analyzer = context.mapperService().documentMapper(type).mappers().indexAnalyzer();
                         TokenStream tokenStream = analyzer.reusableTokenStream(mapper.names().indexName(), new FastStringReader(text));
                         TextFragment[] bestTextFragments = entry.highlighter.getBestTextFragments(tokenStream, text, false, numberOfFragments);
                         for (TextFragment bestTextFragment : bestTextFragments) {
@@ -291,21 +292,21 @@ public class ESHighlighter {
                             // fragment builders are used explicitly
                             cache.fvh = new FastVectorHighlighter();
                         }
-                        CustomFieldQuery.highlightFilters.set(field.highlightFilter());
-                        if (field.requireFieldMatch()) {
-                            if (cache.fieldMatchFieldQuery == null) {
-                                // we use top level reader to rewrite the query against all readers, with use caching it across hits (and across readers...)
-                                cache.fieldMatchFieldQuery = new CustomFieldQuery(getParsedQuery(), hitContext.topLevelReader(), true, field.requireFieldMatch());
-                            }
-                            fieldQuery = cache.fieldMatchFieldQuery;
-                        } else {
-                            if (cache.noFieldMatchFieldQuery == null) {
-                                // we use top level reader to rewrite the query against all readers, with use caching it across hits (and across readers...)
-                                cache.noFieldMatchFieldQuery = new CustomFieldQuery(getParsedQuery(), hitContext.topLevelReader(), true, field.requireFieldMatch());
-                            }
-                            fieldQuery = cache.noFieldMatchFieldQuery;
-                        }
                         cache.mappers.put(mapper, entry);
+                    }
+                    CustomFieldQuery.highlightFilters.set(field.highlightFilter());
+                    if (field.requireFieldMatch()) {
+                        if (cache.fieldMatchFieldQuery == null) {
+                            // we use top level reader to rewrite the query against all readers, with use caching it across hits (and across readers...)
+                            cache.fieldMatchFieldQuery = new CustomFieldQuery(getParsedQuery(), hitContext.topLevelReader(), true, field.requireFieldMatch());
+                        }
+                        fieldQuery = cache.fieldMatchFieldQuery;
+                    } else {
+                        if (cache.noFieldMatchFieldQuery == null) {
+                            // we use top level reader to rewrite the query against all readers, with use caching it across hits (and across readers...)
+                            cache.noFieldMatchFieldQuery = new CustomFieldQuery(getParsedQuery(), hitContext.topLevelReader(), true, field.requireFieldMatch());
+                        }
+                        fieldQuery = cache.noFieldMatchFieldQuery;
                     }
 
                     String[] fragments;
@@ -313,7 +314,7 @@ public class ESHighlighter {
                     // a HACK to make highlighter do highlighting, even though its using the single frag list builder
                     int numberOfFragments = field.numberOfFragments() == 0 ? 1 : field.numberOfFragments();
                     // we highlight against the low level reader and docId, because if we load source, we want to reuse it if possible
-                    fragments = cache.fvh.getBestFragments(fieldQuery, hitContext.reader(), hitContext.docId(), mapper.names().indexName(), field.fragmentCharSize(), numberOfFragments,
+                    fragments = cache.fvh.getBestFragments(fieldQuery, indexReader, docId, mapper.names().indexName(), field.fragmentCharSize(), numberOfFragments,
                             entry.fragListBuilder, entry.fragmentsBuilder, field.preTags(), field.postTags(), encoder);
 
                     if (fragments != null && fragments.length > 0) {

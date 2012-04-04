@@ -28,6 +28,7 @@ import org.elasticsearch.ElasticSearchIllegalArgumentException;
 import org.elasticsearch.ElasticSearchIllegalStateException;
 import org.elasticsearch.common.BytesWrap;
 import org.elasticsearch.common.lucene.search.EmptyScorer;
+import org.elasticsearch.index.search.child.TopChildrenQuery.ChildrenHits;
 import org.elasticsearch.search.internal.ScopePhase;
 import org.elasticsearch.search.internal.SearchContext;
 
@@ -76,7 +77,24 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
 
     private int maxChildrenSize = -1;
 
-    private Map<Integer, List<Integer>> childrendDocsByParent;
+    private Map<Integer, ChildrenHits> childrendHitsByParent;
+
+    public static class ChildrenHit {
+        public int docId;
+        public IndexReader reader;
+    }
+
+    public static class ChildrenHits {
+        private List<ChildrenHit> hits = new ArrayList<ChildrenHit>();
+
+        public void addAll(ChildrenHits other) {
+            hits.addAll(other.hits);
+        }
+
+        public List<ChildrenHit> hits() {
+            return hits;
+        }
+    }
 
     // Note, the query is expected to already be filtered to only child type docs
     public TopChildrenQuery(Query query, String scope, String childType, String parentType, ScoreType scoreType, int factor, int incrementalFactor) {
@@ -103,7 +121,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     public void clear() {
         parentDocs = null;
         numHits = 0;
-        childrendDocsByParent = null;
+        childrendHitsByParent = null;
     }
 
     @Override
@@ -125,7 +143,7 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
     public void processResults(TopDocs topDocs, SearchContext context) {
         Map<Object, TIntObjectHashMap<ParentDoc>> parentDocsPerReader = new HashMap<Object, TIntObjectHashMap<ParentDoc>>();
         if (maxChildrenSize > 0) {
-            childrendDocsByParent = new HashMap<Integer, List<Integer>>();
+            childrendHitsByParent = new HashMap<Integer, ChildrenHits>();
         }
         for (ScoreDoc scoreDoc : topDocs.scoreDocs) {
             int readerIndex = context.searcher().readerIndex(scoreDoc.doc);
@@ -181,15 +199,18 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
 
             if (maxChildrenSize > 0) {
                 int mainParentDocId = parentDocId + context.searcher().docStarts()[parentReaderIndex - 1];
-                List<Integer> childrenIds = childrendDocsByParent.get(mainParentDocId);
-                if (childrenIds == null) {
-                    childrenIds = new ArrayList<Integer>();
-                    childrendDocsByParent.put(mainParentDocId, childrenIds);
+                ChildrenHits childrenHits = childrendHitsByParent.get(mainParentDocId);
+                if (childrenHits == null) {
+                    childrenHits = new ChildrenHits();
+                    childrendHitsByParent.put(mainParentDocId, childrenHits);
                 }
-                if (childrenIds.size() < maxChildrenSize) {
+                if (childrenHits.hits.size() < maxChildrenSize) {
                     // note : since the children have been already globally ordered, here they'll be ordered locally for
                     // a parent, no need for a top score collector
-                    childrenIds.add(scoreDoc.doc);
+                    ChildrenHit childrenHit = new ChildrenHit();
+                    childrenHit.reader = subReader;
+                    childrenHit.docId = subDoc;
+                    childrenHits.hits.add(childrenHit);
                 }
             }
         }
@@ -206,8 +227,8 @@ public class TopChildrenQuery extends Query implements ScopePhase.TopDocsPhase {
         this.maxChildrenSize = maxChildrenSize;
     }
 
-    public Map<Integer, List<Integer>> getChildrendDocsByParent() {
-        return childrendDocsByParent;
+    public Map<Integer, ChildrenHits> getChildrendHitsByParent() {
+        return childrendHitsByParent;
     }
 
     public Query getChildQuery() {

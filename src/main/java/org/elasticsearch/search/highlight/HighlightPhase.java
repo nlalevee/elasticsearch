@@ -70,7 +70,7 @@ public class HighlightPhase implements FetchSubPhase {
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
         ESHighlighter highlighter = new ESHighlighter(context, context.highlight().fields());
         Map<String, HighlightField> highlightFields = highlighter.highlight(hitContext, hitContext.hit().type(),
-                hitContext.hit().docId());
+                hitContext.reader(), hitContext.hit().docId(), context.highlight().fields());
         hitContext.hit().highlightFields(highlightFields);
     }
 

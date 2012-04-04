@@ -34,6 +34,8 @@ import org.elasticsearch.index.mapper.Uid;
 import org.elasticsearch.index.mapper.internal.UidFieldMapper;
 import org.elasticsearch.index.mapper.selector.UidFieldSelector;
 import org.elasticsearch.index.search.child.TopChildrenQuery;
+import org.elasticsearch.index.search.child.TopChildrenQuery.ChildrenHit;
+import org.elasticsearch.index.search.child.TopChildrenQuery.ChildrenHits;
 import org.elasticsearch.search.SearchParseElement;
 import org.elasticsearch.search.fetch.FetchPhaseExecutionException;
 import org.elasticsearch.search.fetch.FetchSubPhase;
@@ -91,52 +93,55 @@ public class ChildrenPhase implements FetchSubPhase {
 
     @Override
     public void hitExecute(SearchContext context, HitContext hitContext) throws ElasticSearchException {
-        List<Integer> childIds = gatherChildIds(context, hitContext);
+        ChildrenHits childrenHits = gatherChildrenHits(context, hitContext);
         int n = 0;
         ESHighlighter esHighlighter = null;
         if (context.children().fields() != null) {
             esHighlighter = new ChildrenHighlighter(context, context.children().fields());
         }
-        ChildrenResult[] childrenResults = new ChildrenResult[Math.min(childIds.size(), context.children().size())];
-        for (Integer childId : childIds) {
+        ChildrenResult[] childrenResults = new ChildrenResult[Math.min(childrenHits.hits().size(), context.children()
+                .size())];
+        for (ChildrenHit childrenHit : childrenHits.hits()) {
             if (context.children().size() <= n) {
                 break;
             }
             Document doc;
             try {
-                doc = context.searcher().doc(childId, UidFieldSelector.INSTANCE);
+                doc = childrenHit.reader.document(childrenHit.docId);
             } catch (IOException e) {
-                throw new FetchPhaseExecutionException(context, "Failed to fetch children doc id [" + childId + "]", e);
+                throw new FetchPhaseExecutionException(context, "Failed to fetch children doc id [" + childrenHit.docId
+                        + "]", e);
             }
             String uidField = doc.get(UidFieldMapper.NAME);
             Uid uid = Uid.createUid(uidField);
             Map<String, HighlightField> highlight = null;
             if (esHighlighter != null) {
-                highlight = esHighlighter.highlight(hitContext, uid.type(), childId);
+                highlight = esHighlighter.highlight(hitContext, uid.type(), childrenHit.reader, childrenHit.docId,
+                        context.children().fields());
             }
             childrenResults[n++] = new ChildrenResult(uid.type(), uid.id(), highlight);
         }
         hitContext.hit().childrenResults(childrenResults);
     }
 
-    private List<Integer> gatherChildIds(SearchContext context, HitContext hitContext) {
-        List<Integer> childrenIds = Lists.newArrayList();
-        gatherChildIds(hitContext.reader(), childrenIds, hitContext.hit().docId(), context.query());
-        return childrenIds;
+    private ChildrenHits gatherChildrenHits(SearchContext context, HitContext hitContext) {
+        ChildrenHits childrenHits = new ChildrenHits();
+        gatherChildrenHits(hitContext.reader(), childrenHits, hitContext.hit().docId(), context.query());
+        return childrenHits;
     }
 
-    private void gatherChildIds(IndexReader indexReader, List<Integer> childrenIds, int parentId, Query query) {
+    private void gatherChildrenHits(IndexReader indexReader, ChildrenHits childrenHits, int parentId, Query query) {
         if (query instanceof BooleanQuery) {
             for (BooleanClause clause : ((BooleanQuery) query).getClauses()) {
                 if (!clause.isProhibited()) {
-                    gatherChildIds(indexReader, childrenIds, parentId, clause.getQuery());
+                    gatherChildrenHits(indexReader, childrenHits, parentId, clause.getQuery());
                 }
             }
         } else if (query instanceof TopChildrenQuery) {
-            Map<Integer, List<Integer>> childrendDocsByParent = ((TopChildrenQuery) query).getChildrendDocsByParent();
-            List<Integer> ids = childrendDocsByParent.get(parentId);
-            if (ids != null) {
-                childrenIds.addAll(ids);
+            Map<Integer, ChildrenHits> childrendHitsByParent = ((TopChildrenQuery) query).getChildrendHitsByParent();
+            ChildrenHits hits = childrendHitsByParent.get(parentId);
+            if (hits != null) {
+                childrenHits.addAll(hits);
             }
             // BlockJoinQuery not supported for now
             // } else if (query instanceof BlockJoinQuery) {
@@ -145,7 +150,7 @@ public class ChildrenPhase implements FetchSubPhase {
             // childrenIds.addAll(ids);
             // }
         } else if (query instanceof FilteredQuery) {
-            gatherChildIds(indexReader, childrenIds, parentId, ((FilteredQuery) query).getQuery());
+            gatherChildrenHits(indexReader, childrenHits, parentId, ((FilteredQuery) query).getQuery());
         }
     }
 }

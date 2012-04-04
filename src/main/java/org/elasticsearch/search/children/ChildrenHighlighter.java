@@ -24,6 +24,7 @@ import java.util.List;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.FilteredQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.index.search.child.TopChildrenQuery;
 import org.elasticsearch.search.highlight.ESHighlighter;
@@ -61,6 +62,8 @@ public class ChildrenHighlighter extends ESHighlighter {
             // BlockJoinQuery not supported for now
             // } else if (query instanceof BlockJoinQuery) {
             // cumulatorQuery.add(((BlockJoinQuery) query).getChildQuery(), Occur.MUST);
+        } else if (query instanceof FilteredQuery) {
+            extractChildQueries(cumulatorQuery, ((FilteredQuery) query).getQuery());
         }
         return cumulatorQuery;
     }
